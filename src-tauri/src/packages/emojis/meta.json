@@ -1,0 +1,6 @@
+{
+  "id": "emojis",
+  "name": "Emojis",
+  "description": "Type :emoji: anywhere to expand into unicode emojis",
+  "version": "1.0.0"
+}
