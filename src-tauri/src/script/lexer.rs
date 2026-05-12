@@ -72,7 +72,7 @@ impl Lexer {
     }
 
     pub fn tokenize(&mut self) -> Result<Vec<Token>, String> {
-        let mut tokens = Vec::new();
+        let mut tokens = vec![];
         while !self.is_at_end() {
             let token = self.scan_token()?;
             if let Some(t) = token {

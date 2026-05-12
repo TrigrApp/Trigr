@@ -73,12 +73,12 @@ impl TriggerManager {
             match fs::read_to_string(file_path) {
                 Ok(content) => match serde_json::from_str::<TriggerFileData>(&content) {
                     Ok(data) => data.triggers,
-                    Err(_) => Vec::new(),
+                    Err(_) => vec![],
                 },
-                Err(_) => Vec::new(),
+                Err(_) => vec![],
             }
         } else {
-            Vec::new()
+            vec![]
         }
     }
 
@@ -87,12 +87,12 @@ impl TriggerManager {
             match fs::read_to_string(file_path) {
                 Ok(content) => match serde_json::from_str::<GlobalVarFileData>(&content) {
                     Ok(data) => data.global_vars,
-                    Err(_) => Vec::new(),
+                    Err(_) => vec![],
                 },
-                Err(_) => Vec::new(),
+                Err(_) => vec![],
             }
         } else {
-            Vec::new()
+            vec![]
         }
     }
 

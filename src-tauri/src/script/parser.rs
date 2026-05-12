@@ -222,7 +222,7 @@ impl Parser {
 
         loop {
             if self.match_token(&TokenKind::LParen) {
-                let mut args = Vec::new();
+                let mut args = vec![];
                 if !self.check(&TokenKind::RParen) {
                     loop {
                         args.push(self.parse_pipe()?);
@@ -286,7 +286,7 @@ impl Parser {
         }
 
         if self.match_token(&TokenKind::LBracket) {
-            let mut items = Vec::new();
+            let mut items = vec![];
             if !self.check(&TokenKind::RBracket) {
                 loop {
                     items.push(self.parse_pipe()?);
@@ -300,7 +300,7 @@ impl Parser {
         }
 
         if self.match_token(&TokenKind::Fn) {
-            let mut params = Vec::new();
+            let mut params = vec![];
             if !self.check(&TokenKind::Arrow) {
                 loop {
                     params.push(self.consume_ident()?);

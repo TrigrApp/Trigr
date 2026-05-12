@@ -169,7 +169,7 @@ impl Evaluator {
     }
 
     fn eval_call(&mut self, callee: &Expr, args: &[Expr]) -> Result<Value, String> {
-        let mut arg_values = Vec::new();
+        let mut arg_values = vec![];
         for a in args {
             arg_values.push(self.evaluate(a)?);
         }
@@ -520,7 +520,7 @@ impl Evaluator {
                     v => vec![v.clone()],
                 };
                 let fn_name = args[1].to_string();
-                let mut results = Vec::new();
+                let mut results = vec![];
                 for item in &items {
                     self.env.insert("__item".to_string(), item.clone());
                     let result = self.call_builtin(&fn_name, &[item.clone()])?;
@@ -538,7 +538,7 @@ impl Evaluator {
                     v => vec![v.clone()],
                 };
                 let cond_fn = args[1].to_string();
-                let mut results = Vec::new();
+                let mut results = vec![];
                 for item in &items {
                     self.env.insert("__item".to_string(), item.clone());
                     let cond = self.call_builtin(&cond_fn, &[item.clone()])?;

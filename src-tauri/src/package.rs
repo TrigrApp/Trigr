@@ -57,7 +57,7 @@ impl PackageManager {
             pf
         } else {
             PackageFile {
-                installed: Vec::new(),
+                installed: vec![],
             }
         }
     }
@@ -70,9 +70,9 @@ impl PackageManager {
 
     pub fn get_available_packages(&self) -> Vec<Package> {
         if !self.packages_dir.exists() {
-            return Vec::new();
+            return vec![];
         }
-        let mut packages = Vec::new();
+        let mut packages = vec![];
         if let Ok(entries) = fs::read_dir(&self.packages_dir) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let path = entry.path();
@@ -157,7 +157,7 @@ impl PackageManager {
         let installed_ids: Vec<String> = state.installed.clone();
         drop(state);
 
-        let mut triggers = Vec::new();
+        let mut triggers = vec![];
         for pkg in self.get_available_packages() {
             if installed_ids.contains(&pkg.id) {
                 triggers.extend(pkg.triggers);
