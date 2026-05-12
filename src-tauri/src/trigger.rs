@@ -1,8 +1,13 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::{collections::HashMap, fs, path::PathBuf, sync::{Arc, RwLock}};
+
+macro_rules! fill_optional_values {
+    ($target:ident,$($value:ident),*) => {$(
+        if let Some($value) = $value {
+            $target.$value = $value;
+        }
+    )*};
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trigger {
@@ -68,12 +73,12 @@ impl TriggerManager {
             match fs::read_to_string(file_path) {
                 Ok(content) => match serde_json::from_str::<TriggerFileData>(&content) {
                     Ok(data) => data.triggers,
-                    Err(_) => Vec::new(),
+                    Err(_) => vec![],
                 },
-                Err(_) => Vec::new(),
+                Err(_) => vec![],
             }
         } else {
-            Vec::new()
+            vec![]
         }
     }
 
@@ -82,12 +87,12 @@ impl TriggerManager {
             match fs::read_to_string(file_path) {
                 Ok(content) => match serde_json::from_str::<GlobalVarFileData>(&content) {
                     Ok(data) => data.global_vars,
-                    Err(_) => Vec::new(),
+                    Err(_) => vec![],
                 },
-                Err(_) => Vec::new(),
+                Err(_) => vec![],
             }
         } else {
-            Vec::new()
+            vec![]
         }
     }
 
@@ -165,24 +170,9 @@ impl TriggerManager {
                 .iter_mut()
                 .find(|t| t.id == id)
                 .ok_or_else(|| "Trigger not found".to_string())?;
-            if let Some(text) = trigger_text {
-                trigger.trigger_text = text;
-            }
-            if let Some(repl) = replacement {
-                trigger.replacement = repl;
-            }
-            if let Some(cat) = category {
-                trigger.category = cat;
-            }
-            if let Some(am) = args_mode {
-                trigger.args_mode = am;
-            }
-            if let Some(en) = enabled {
-                trigger.enabled = en;
-            }
-            if let Some(v) = vars {
-                trigger.vars = v;
-            }
+
+            fill_optional_values!(trigger, trigger_text, replacement, category, args_mode, enabled, vars);
+
             trigger.updated_at = chrono::Utc::now().to_rfc3339();
             Ok(trigger.clone())
         }
@@ -246,15 +236,9 @@ impl TriggerManager {
                 .iter_mut()
                 .find(|g| g.id == id)
                 .ok_or_else(|| "Global variable not found".to_string())?;
-            if let Some(n) = name {
-                gv.name = n;
-            }
-            if let Some(s) = script {
-                gv.script = s;
-            }
-            if let Some(en) = enabled {
-                gv.enabled = en;
-            }
+
+            fill_optional_values!(gv, name, script, enabled);
+
             Ok(gv.clone())
         }
         .and_then(|gv| {
@@ -305,7 +289,7 @@ impl TriggerManager {
         }
 
         for (name, value) in &var_values {
-            let placeholder = format!("{{{{{}}}}}", name);
+            let placeholder = format!("{{{{{name}}}}}");
             result = result.replace(&placeholder, value);
         }
 
@@ -335,30 +319,26 @@ fn resolve_qlang_expressions(
             }
             let mut expr = String::new();
             let mut found_close = false;
-            loop {
-                if let Some(&ch) = chars.peek() {
-                    if ch == '}' {
+            while let Some(&ch) = chars.peek() {
+                if ch == '}' {
+                    chars.next();
+                    if chars.peek() == Some(&'}') {
                         chars.next();
-                        if chars.peek() == Some(&'}') {
-                            chars.next();
-                            found_close = true;
-                            break;
-                        } else {
-                            expr.push('}');
-                        }
+                        found_close = true;
+                        break;
                     } else {
-                        expr.push(ch);
-                        chars.next();
+                        expr.push('}');
                     }
                 } else {
-                    break;
+                    expr.push(ch);
+                    chars.next();
                 }
             }
             if found_close {
                 let trimmed = expr.trim();
                 let val = evaluate_script_with_args(trimmed, context, args);
                 if val == "{{script error}}" {
-                    result.push_str(&format!("{{{{{}}}}}", expr));
+                    result.push_str(&format!("{{{{{expr}}}}}"));
                 } else {
                     result.push_str(&val);
                 }
@@ -386,7 +366,7 @@ fn evaluate_script_with_args(
     let mut ctx = context.clone();
 
     for (i, arg) in args.iter().enumerate() {
-        ctx.insert(format!("_arg_{}", i), arg.clone());
+        ctx.insert(format!("_arg_{i}"), arg.clone());
     }
     ctx.insert("_args_len".to_string(), args.len().to_string());
 

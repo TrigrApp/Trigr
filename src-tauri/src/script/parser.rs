@@ -1,5 +1,4 @@
-use crate::script::lexer::{Token, TokenKind};
-use crate::script::ast::*;
+use crate::script::{lexer::{Token, TokenKind}, ast::*};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -7,7 +6,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
+    pub const fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, pos: 0 }
     }
 
@@ -72,16 +71,19 @@ impl Parser {
                 Expr::Var(name) => {
                     let value = self.parse_assignment()?;
                     let name_clone = name.clone();
-                    return Ok(Expr::Let {
+
+                    Ok(Expr::Let {
                         name,
                         value: Box::new(value),
                         body: Box::new(Expr::Var(name_clone)),
-                    });
-                }
-                _ => return Err("Invalid assignment target".to_string()),
+                    })
+                },
+
+                _ => Err("Invalid assignment target".to_string()),
             }
+        } else {
+            Ok(expr)
         }
-        Ok(expr)
     }
 
     fn parse_or(&mut self) -> Result<Expr, String> {
@@ -223,7 +225,7 @@ impl Parser {
 
         loop {
             if self.match_token(&TokenKind::LParen) {
-                let mut args = Vec::new();
+                let mut args = vec![];
                 if !self.check(&TokenKind::RParen) {
                     loop {
                         args.push(self.parse_pipe()?);
@@ -277,7 +279,7 @@ impl Parser {
 
         if self.match_token(&TokenKind::Number) {
             let lexeme = self.tokens[self.pos - 1].lexeme.clone();
-            let n: f64 = lexeme.parse().map_err(|e| format!("Invalid number: {}", e))?;
+            let n: f64 = lexeme.parse().map_err(|e| format!("Invalid number: {e}"))?;
             return Ok(Expr::Literal(Value::Num(n)));
         }
 
@@ -287,7 +289,7 @@ impl Parser {
         }
 
         if self.match_token(&TokenKind::LBracket) {
-            let mut items = Vec::new();
+            let mut items = vec![];
             if !self.check(&TokenKind::RBracket) {
                 loop {
                     items.push(self.parse_pipe()?);
@@ -301,7 +303,7 @@ impl Parser {
         }
 
         if self.match_token(&TokenKind::Fn) {
-            let mut params = Vec::new();
+            let mut params = vec![];
             if !self.check(&TokenKind::Arrow) {
                 loop {
                     params.push(self.consume_ident()?);
@@ -366,7 +368,7 @@ impl Parser {
             Ok(self.advance())
         } else {
             let token = self.peek();
-            Err(format!("Expected {}: found '{:?}' at line {}", message, token.kind, token.line))
+            Err(format!("Expected {message}: found '{:?}' at line {}", token.kind, token.line))
         }
     }
 

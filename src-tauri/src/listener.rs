@@ -1,9 +1,7 @@
-use crate::package::PackageManager;
-use crate::trigger::TriggerManager;
+use crate::{package::PackageManager, trigger::TriggerManager};
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use rdev::{listen, EventType, Key as RdevKey};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex};
 
 static EXPANDING: AtomicBool = AtomicBool::new(false);
 
@@ -105,9 +103,8 @@ fn handle_char(
         return;
     }
 
-    let name = match &event.name {
-        Some(n) => n,
-        None => return,
+    let Some(name) = &event.name else {
+        return;
     };
 
     if name.len() != 1 {

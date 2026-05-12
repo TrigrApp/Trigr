@@ -1,5 +1,4 @@
-use std::env;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 pub fn get_settings_path() -> Option<PathBuf> {
     env::var("APPDATA").ok().map(|appdata| {
@@ -8,9 +7,7 @@ pub fn get_settings_path() -> Option<PathBuf> {
 }
 
 pub fn init_settings_dir() {
-    if let Some(path) = get_settings_path() {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+    if let Some(path) = get_settings_path() && let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
     }
 }

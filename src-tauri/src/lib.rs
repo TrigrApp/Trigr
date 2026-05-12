@@ -5,14 +5,9 @@ mod settings;
 mod trigger;
 
 use package::PackageManager;
-use std::fs;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::{fs, path::PathBuf, sync::{Arc, Mutex}};
 use tauri::{menu::Menu, tray::TrayIconBuilder, Manager, State};
-use trigger::GlobalVar;
-use trigger::TriggerManager;
-use trigger::TriggerVar;
+use trigger::{GlobalVar, TriggerManager, TriggerVar};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AppSettings {
@@ -21,22 +16,12 @@ pub struct AppSettings {
 }
 
 impl AppSettings {
-    fn default() -> Self {
-        Self {
-            ender_char: "!".to_string(),
-            theme_color: "#8b5cf6".to_string(),
-        }
-    }
-
     fn load(path: &PathBuf) -> Self {
-        if path.exists() {
-            if let Ok(content) = fs::read_to_string(path) {
-                if let Ok(s) = serde_json::from_str(&content) {
-                    return s;
-                }
-            }
+        if let Ok(Ok(s)) = fs::read_to_string(path).map(|content| serde_json::from_str(&content)) {
+            s
+        } else {
+            Self::default()
         }
-        Self::default()
     }
 
     fn save(&self, path: &PathBuf) -> Result<(), String> {
@@ -46,6 +31,15 @@ impl AppSettings {
         }
         fs::write(path, content).map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            ender_char: "!".to_string(),
+            theme_color: "#8b5cf6".to_string(),
+        }
     }
 }
 
@@ -87,7 +81,7 @@ struct TriggerExport {
 
 impl From<trigger::Trigger> for TriggerExport {
     fn from(t: trigger::Trigger) -> Self {
-        TriggerExport {
+        Self {
             id: t.id,
             trigger_text: t.trigger_text,
             replacement: t.replacement,
@@ -210,7 +204,7 @@ fn preview_replacement(
 fn evaluate_script(source: String, context: std::collections::HashMap<String, String>) -> String {
     match script::evaluate(&source, &context) {
         Ok(result) => result,
-        Err(e) => format!("Error: {}", e),
+        Err(e) => format!("Error: {e}"),
     }
 }
 
@@ -222,7 +216,7 @@ fn preview_script(source: String) -> String {
     context.insert("count".to_string(), "42".to_string());
     match script::evaluate(&source, &context) {
         Ok(result) => result,
-        Err(e) => format!("Error: {}", e),
+        Err(e) => format!("Error: {e}"),
     }
 }
 
@@ -245,7 +239,7 @@ fn export_data(manager: State<Mutex<TriggerManager>>) -> Result<String, String> 
 #[tauri::command]
 fn import_data(manager: State<Mutex<TriggerManager>>, json: String) -> Result<String, String> {
     let data: ExportData =
-        serde_json::from_str(&json).map_err(|e| format!("Invalid format: {}", e))?;
+        serde_json::from_str(&json).map_err(|e| format!("Invalid format: {e}"))?;
     let m = manager.lock().unwrap();
 
     let trigger_count = data.triggers.len();
@@ -265,8 +259,7 @@ fn import_data(manager: State<Mutex<TriggerManager>>, json: String) -> Result<St
     }
 
     Ok(format!(
-        "Imported {} triggers and {} global variables",
-        trigger_count, gv_count
+        "Imported {trigger_count} triggers and {gv_count} global variables"
     ))
 }
 
@@ -334,10 +327,8 @@ fn uninstall_package(
 
 #[tauri::command]
 fn update_tray_icon(app: tauri::AppHandle, _theme_color: String) -> Result<(), String> {
-    if let Some(tray) = app.tray_by_id("main") {
-        if let Some(icon) = app.default_window_icon() {
-            let _ = tray.set_icon(Some(icon.clone()));
-        }
+    if let (Some(tray), Some(icon)) = (app.tray_by_id("main"), app.default_window_icon()) {
+        let _ = tray.set_icon(Some(icon.clone()));
     }
     Ok(())
 }

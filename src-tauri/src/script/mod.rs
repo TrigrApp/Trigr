@@ -22,18 +22,18 @@ pub fn evaluate(source: &str, context: &HashMap<String, String>) -> Result<Strin
 
 pub fn evaluate_with_args(source: &str, context: &HashMap<String, String>, args: &[String]) -> Result<String, String> {
     let expr = parse(source)?;
-    let mut evaluator = Evaluator::new();
+    let mut evaluator = Evaluator::default();
 
     for (key, value) in context {
-        if key == "_args_len" {
-            if let Ok(n) = value.parse::<f64>() {
-                evaluator.env.insert(key.clone(), Value::Num(n));
-            } else {
-                evaluator.env.insert(key.clone(), Value::Str(value.clone()));
-            }
+        evaluator.env.insert(key.clone(), if key == "_args_len" {
+            Value::Str(value.clone())
         } else {
-            evaluator.env.insert(key.clone(), Value::Str(value.clone()));
-        }
+            if let Ok(n) = value.parse::<f64>() {
+                Value::Num(n)
+            } else {
+                Value::Str(value.clone())
+            }
+        });
     }
 
     let args_values: Vec<Value> = args.iter().map(|a| Value::Str(a.clone())).collect();
@@ -61,15 +61,13 @@ pub fn resolve_template(template: &str, context: &HashMap<String, String>) -> Re
 
         while let Some(ch) = chars.next() {
             if !in_var {
-                if ch == '{' {
-                    if chars.peek() == Some(&'{') {
-                        chars.next();
-                        in_var = true;
-                        brace_depth = 0;
-                        var_content.clear();
-                        changed = true;
-                        continue;
-                    }
+                if ch == '{' && chars.peek() == Some(&'{') {
+                    chars.next();
+                    in_var = true;
+                    brace_depth = 0;
+                    var_content.clear();
+                    changed = true;
+                    continue;
                 }
                 new_result.push(ch);
             } else {
@@ -82,7 +80,7 @@ pub fn resolve_template(template: &str, context: &HashMap<String, String>) -> Re
                             chars.next();
                             match evaluate(&var_content, context) {
                                 Ok(value) => new_result.push_str(&value),
-                                Err(e) => new_result.push_str(&format!("{{{{{} Error: {}}}}}", var_content, e)),
+                                Err(e) => new_result.push_str(&format!("{{{{{var_content} Error: {e}}}}}")),
                             }
                             in_var = false;
                             continue;

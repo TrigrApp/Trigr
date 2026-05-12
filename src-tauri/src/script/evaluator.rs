@@ -2,17 +2,12 @@ use crate::script::ast::*;
 pub use crate::script::ast::Value;
 use std::collections::HashMap;
 
+#[derive(Default)]
 pub struct Evaluator {
     pub env: HashMap<String, Value>,
 }
 
 impl Evaluator {
-    pub fn new() -> Self {
-        Self {
-            env: HashMap::new(),
-        }
-    }
-
     pub fn evaluate(&mut self, expr: &Expr) -> Result<Value, String> {
         match expr {
             Expr::Literal(v) => Ok(v.clone()),
@@ -20,15 +15,14 @@ impl Evaluator {
                 self.env
                     .get(name)
                     .cloned()
-                    .ok_or_else(|| format!("Undefined variable: {}", name))
+                    .ok_or_else(|| format!("Undefined variable: {name}"))
             }
             Expr::Binary { left, op, right } => self.eval_binary(left, op, right),
             Expr::Unary { op, expr } => self.eval_unary(op, expr),
             Expr::Call { callee, args } => self.eval_call(callee, args),
             Expr::Index { target, index } => self.eval_index(target, index),
             Expr::If { condition, then_branch, else_branch } => {
-                let cond = self.evaluate(condition)?.as_bool();
-                if cond {
+                if self.evaluate(condition)?.as_bool() {
                     self.evaluate(then_branch)
                 } else if let Some(els) = else_branch {
                     self.evaluate(els)
@@ -45,7 +39,7 @@ impl Evaluator {
             }
             Expr::Fn { params, body } => Ok(Value::Map(HashMap::from([
                 ("__fn_params".to_string(), Value::List(params.iter().map(|p| Value::Str(p.clone())).collect())),
-                ("__fn_body".to_string(), Value::Str(format!("{:?}", body))),
+                ("__fn_body".to_string(), Value::Str(format!("{body:?}"))),
             ]))),
             Expr::Pipe { left, right } => {
                 let left_val = self.evaluate(left)?;
@@ -87,18 +81,18 @@ impl Evaluator {
 
         match op {
             BinaryOp::Add => {
-                if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
-                    Ok(Value::Num(a + b))
-                } else if let (Value::Str(a), Value::Str(b)) = (&l, &r) {
-                    Ok(Value::Str(format!("{}{}", a, b)))
-                } else if let (Value::Str(a), _) = (&l, &r) {
-                    Ok(Value::Str(format!("{}{}", a, r.to_string())))
-                } else if let (_, Value::Str(b)) = (&l, &r) {
-                    Ok(Value::Str(format!("{}{}", l.to_string(), b)))
-                } else if let (Value::Num(a), Value::Str(b)) = (&l, &r) {
-                    Ok(Value::Str(format!("{}{}", a, b)))
-                } else {
-                    Err(format!("Cannot add {:?} and {:?}", l, r))
+                match (&l, &r) {
+                    (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a + b)),
+
+                    (Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
+
+                    (Value::Num(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
+
+                    (Value::Str(a), _) => Ok(Value::Str(format!("{a}{}", r.to_string()))),
+
+                    (_, Value::Str(b)) => Ok(Value::Str(format!("{}{b}", l.to_string()))),
+
+                    _ => Err(format!("Cannot add {l:?} and {r:?}")),
                 }
             }
             BinaryOp::Sub => {
@@ -128,32 +122,32 @@ impl Evaluator {
             BinaryOp::Eq => Ok(Value::Bool(self.values_equal(&l, &r))),
             BinaryOp::Ne => Ok(Value::Bool(!self.values_equal(&l, &r))),
             BinaryOp::Lt => {
-                if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
-                    Ok(Value::Bool(a < b))
+                Ok(Value::Bool(if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
+                    a < b
                 } else {
-                    Ok(Value::Bool(l.to_string() < r.to_string()))
-                }
+                    l.to_string() < r.to_string()
+                }))
             }
             BinaryOp::Gt => {
-                if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
-                    Ok(Value::Bool(a > b))
+                Ok(Value::Bool(if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
+                    a > b
                 } else {
-                    Ok(Value::Bool(l.to_string() > r.to_string()))
-                }
+                    l.to_string() > r.to_string()
+                }))
             }
             BinaryOp::Le => {
-                if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
-                    Ok(Value::Bool(a <= b))
+                Ok(Value::Bool(if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
+                    a <= b
                 } else {
-                    Ok(Value::Bool(l.to_string() <= r.to_string()))
-                }
+                    l.to_string() <= r.to_string()
+                }))
             }
             BinaryOp::Ge => {
-                if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
-                    Ok(Value::Bool(a >= b))
+                Ok(Value::Bool(if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
+                    a >= b
                 } else {
-                    Ok(Value::Bool(l.to_string() >= r.to_string()))
-                }
+                    l.to_string() >= r.to_string()
+                }))
             }
         }
     }
@@ -170,29 +164,20 @@ impl Evaluator {
     }
 
     fn eval_call(&mut self, callee: &Expr, args: &[Expr]) -> Result<Value, String> {
-        let mut arg_values = Vec::new();
+        let mut arg_values = vec![];
         for a in args {
             arg_values.push(self.evaluate(a)?);
         }
 
-        if let Expr::Call { callee: inner_callee, args: inner_args } = callee {
-            if let Expr::Var(inner_name) = inner_callee.as_ref() {
-                if inner_name == "random" && inner_args.len() == 1 {
-                    if let Expr::Var(q) = &inner_args[0] {
-                        if q == "q" {
-                            return self.call_builtin("q_random", &arg_values);
-                        }
-                    }
-                }
-            }
+        if let Expr::Call { callee: inner_callee, args: inner_args } = callee && let Expr::Var(inner_name) = inner_callee.as_ref() && inner_name == "random" && inner_args.len() == 1 && let Expr::Var(q) = &inner_args[0] && q == "q" {
+            return self.call_builtin("q_random", &arg_values);
         }
 
-        let func_name = match callee {
-            Expr::Var(name) => name.clone(),
-            _ => return Err("Can only call functions and builtins".to_string()),
+        let Expr::Var(func_name) = callee else {
+            return Err("Can only call functions and builtins".to_string());
         };
 
-        self.call_builtin(&func_name, &arg_values)
+        self.call_builtin(func_name, &arg_values)
     }
 
     fn eval_call_with_values(&mut self, func_name: &str, arg_values: &[Value]) -> Result<Value, String> {
@@ -210,7 +195,7 @@ impl Evaluator {
                 } else {
                     n as usize
                 };
-                items.get(idx).cloned().ok_or_else(|| format!("Index {} out of bounds", n))
+                items.get(idx).cloned().ok_or_else(|| format!("Index {n} out of bounds"))
             }
             (Value::Str(s), Value::Num(n)) => {
                 let chars: Vec<char> = s.chars().collect();
@@ -219,10 +204,10 @@ impl Evaluator {
                 } else {
                     n as usize
                 };
-                chars.get(idx).map(|c| Value::Str(c.to_string())).ok_or_else(|| format!("Index {} out of bounds", n))
+                chars.get(idx).map(|c| Value::Str(c.to_string())).ok_or_else(|| format!("Index {n} out of bounds"))
             }
             (Value::Map(map), Value::Str(key)) => {
-                map.get(&key).cloned().ok_or_else(|| format!("Key '{}' not found", key))
+                map.get(&key).cloned().ok_or_else(|| format!("Key '{key}' not found"))
             }
             _ => Err("Cannot index this type".to_string()),
         }
@@ -367,8 +352,8 @@ impl Evaluator {
                     ' '
                 };
                 let pad_len = target.saturating_sub(s.chars().count());
-                let padding: String = std::iter::repeat(ch).take(pad_len).collect();
-                Ok(Value::Str(format!("{}{}", padding, s)))
+                let padding: String = std::iter::repeat_n(ch, pad_len).collect();
+                Ok(Value::Str(format!("{padding}{s}")))
             }
             "pad_end" => {
                 if args.len() < 2 {
@@ -382,8 +367,8 @@ impl Evaluator {
                     ' '
                 };
                 let pad_len = target.saturating_sub(s.chars().count());
-                let padding: String = std::iter::repeat(ch).take(pad_len).collect();
-                Ok(Value::Str(format!("{}{}", s, padding)))
+                let padding: String = std::iter::repeat_n(ch, pad_len).collect();
+                Ok(Value::Str(format!("{s}{padding}")))
             }
             "concat" => {
                 let parts: Vec<String> = args.iter().map(|v| v.to_string()).collect();
@@ -408,7 +393,7 @@ impl Evaluator {
             }
             "to_num" | "number" => {
                 let s = args.first().map(|v| v.to_string()).unwrap_or_default();
-                let n: f64 = s.parse().map_err(|_| format!("Cannot convert '{}' to number", s))?;
+                let n: f64 = s.parse().map_err(|_| format!("Cannot convert '{s}' to number"))?;
                 Ok(Value::Num(n))
             }
             "to_str" | "string" => {
@@ -529,10 +514,10 @@ impl Evaluator {
                     v => vec![v.clone()],
                 };
                 let fn_name = args[1].to_string();
-                let mut results = Vec::new();
+                let mut results = vec![];
                 for item in &items {
                     self.env.insert("__item".to_string(), item.clone());
-                    let result = self.call_builtin(&fn_name, &[item.clone()])?;
+                    let result = self.call_builtin(&fn_name, std::slice::from_ref(item))?;
                     results.push(result);
                     self.env.remove("__item");
                 }
@@ -547,10 +532,10 @@ impl Evaluator {
                     v => vec![v.clone()],
                 };
                 let cond_fn = args[1].to_string();
-                let mut results = Vec::new();
+                let mut results = vec![];
                 for item in &items {
                     self.env.insert("__item".to_string(), item.clone());
-                    let cond = self.call_builtin(&cond_fn, &[item.clone()])?;
+                    let cond = self.call_builtin(&cond_fn, std::slice::from_ref(item))?;
                     if cond.as_bool() {
                         results.push(item.clone());
                     }
@@ -563,16 +548,15 @@ impl Evaluator {
                     Some(Value::List(items)) => items.clone(),
                     _ => return Err("sort requires a list".to_string()),
                 };
-                items.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                items.sort_by_key(|a| a.to_string());
                 Ok(Value::List(items))
             }
             "join_list" => {
                 if args.len() < 2 {
                     return Err("join_list requires a list and separator".to_string());
                 }
-                let items = match &args[0] {
-                    Value::List(items) => items,
-                    _ => return Err("join_list requires a list".to_string()),
+                let Value::List(items) = items else {
+                    return Err("join_list requires a list".to_string());
                 };
                 let sep = args[1].to_string();
                 let result = items.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(&sep);
@@ -592,14 +576,15 @@ impl Evaluator {
                 }
                 let s = args[0].to_string();
                 let days = args[1].as_num().ok_or("Days must be a number")? as i64;
-                if let Ok(dt) = chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
+
+                Ok(Value::Str(if let Ok(dt) = chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
                     let new_date = dt + chrono::Duration::days(days);
-                    Ok(Value::Str(new_date.format("%Y-%m-%d").to_string()))
+                    new_date.format("%Y-%m-%d").to_string()
                 } else {
                     let dt = chrono::Local::now().date_naive();
                     let new_date = dt + chrono::Duration::days(days);
-                    Ok(Value::Str(new_date.format(&s).to_string()))
-                }
+                    new_date.format(&s).to_string()
+                }))
             }
             "date_format" => {
                 if args.len() < 2 {
@@ -610,7 +595,7 @@ impl Evaluator {
                 if let Ok(dt) = chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
                     Ok(Value::Str(dt.format(&fmt).to_string()))
                 } else {
-                    Err(format!("Cannot parse date: {}", s))
+                    Err(format!("Cannot parse date: {s}"))
                 }
             }
             "if_then_else" => {
@@ -630,11 +615,11 @@ impl Evaluator {
                 Ok(Value::Bool(args.iter().all(|v| v.as_bool())))
             }
             _ => {
-                if let Some(v) = self.env.get(name) {
-                    Ok(v.clone())
+                Ok(if let Some(v) = self.env.get(name) {
+                    v.clone()
                 } else {
-                    Ok(Value::Str(format!("{{{{{}}}}}", name)))
-                }
+                    Value::Str(format!("{{{{{name}}}}}"))
+                })
             }
         }
     }
