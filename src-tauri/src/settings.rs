@@ -1,8 +1,11 @@
 use std::{env, path::PathBuf};
 
+const APP_DIR_NAME: &str = "com.rubik.trigr";
+const SETTINGS_FILENAME: &str = "settings.json";
+
 pub fn get_settings_path() -> Option<PathBuf> {
     env::var("APPDATA").ok().map(|appdata| {
-        PathBuf::from(appdata).join("com.rubik.trigr").join("settings.json")
+        PathBuf::from(appdata).join(APP_DIR_NAME).join(SETTINGS_FILENAME)
     })
 }
 

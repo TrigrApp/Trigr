@@ -27,6 +27,7 @@ pub enum TokenKind {
     Not,
     If,
     Else,
+    Then,
     For,
     In,
     Let,
@@ -35,6 +36,7 @@ pub enum TokenKind {
     True,
     False,
     Nil,
+    Match,
     Newline,
     Semicolon,
     Colon,
@@ -137,6 +139,8 @@ impl Lexer {
             })),
             '=' => Ok(Some(if self.match_next('=') {
                 Token::new(TokenKind::Eq, "==".to_string(), self.line)
+            } else if self.match_next('>') {
+                Token::new(TokenKind::Arrow, "=>".to_string(), self.line)
             } else {
                 Token::new(TokenKind::Eq, "=".to_string(), self.line)
             })),
@@ -312,11 +316,13 @@ impl Lexer {
         let kind = match s.as_str() {
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
+            "then" => TokenKind::Then,
             "for" => TokenKind::For,
             "in" => TokenKind::In,
             "let" => TokenKind::Let,
             "return" => TokenKind::Return,
             "fn" => TokenKind::Fn,
+            "match" => TokenKind::Match,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,

@@ -22,6 +22,10 @@ pub enum Expr {
         target: Box<Expr>,
         index: Box<Expr>,
     },
+    DotAccess {
+        target: Box<Expr>,
+        field: String,
+    },
     If {
         condition: Box<Expr>,
         then_branch: Box<Expr>,
@@ -45,6 +49,12 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    Match {
+        value: Box<Expr>,
+        arms: Vec<(Value, Box<Expr>)>,
+        default: Option<Box<Expr>>,
+    },
+    Object(Vec<(String, Expr)>),
     Block(Vec<Expr>),
     List(Vec<Expr>),
 }

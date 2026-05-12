@@ -107,7 +107,7 @@ fn handle_char(
         return;
     };
 
-    if name.len() != 1 {
+    if name.chars().count() != 1 {
         return;
     }
 
@@ -247,38 +247,7 @@ fn strip_last_word(buf: &mut String) {
 }
 
 fn is_punct(c: char) -> bool {
-    matches!(
-        c,
-        '.' | ','
-            | ';'
-            | ':'
-            | '!'
-            | '?'
-            | '('
-            | ')'
-            | '['
-            | ']'
-            | '{'
-            | '}'
-            | '"'
-            | '\''
-            | '/'
-            | '\\'
-            | '|'
-            | '@'
-            | '#'
-            | '$'
-            | '%'
-            | '^'
-            | '&'
-            | '*'
-            | '+'
-            | '='
-            | '<'
-            | '>'
-            | '~'
-            | '`'
-    )
+    c.is_ascii_punctuation()
 }
 
 fn expand_text(backspace_count: usize, replacement: &str) {

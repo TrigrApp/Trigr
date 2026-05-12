@@ -1,14 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, sync::{Arc, RwLock}};
 
-macro_rules! fill_optional_values {
-    ($target:ident,$($value:ident),*) => {$(
-        if let Some($value) = $value {
-            $target.$value = $value;
-        }
-    )*};
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trigger {
     pub id: String,
@@ -54,10 +46,13 @@ pub struct TriggerManager {
     global_vars: Arc<RwLock<Vec<GlobalVar>>>,
 }
 
+const TRIGGERS_FILENAME: &str = "triggers.json";
+const GLOBAL_VARS_FILENAME: &str = "global_vars.json";
+
 impl TriggerManager {
     pub fn new(data_dir: PathBuf) -> Self {
-        let trigger_file_path = data_dir.join("triggers.json");
-        let global_var_file_path = data_dir.join("global_vars.json");
+        let trigger_file_path = data_dir.join(TRIGGERS_FILENAME);
+        let global_var_file_path = data_dir.join(GLOBAL_VARS_FILENAME);
         let triggers = Self::load_triggers(&trigger_file_path);
         let global_vars = Self::load_global_vars(&global_var_file_path);
         Self {
@@ -123,7 +118,7 @@ impl TriggerManager {
     }
 
     pub fn get_triggers(&self) -> Vec<Trigger> {
-        self.triggers.read().unwrap().clone()
+        self.triggers.read().expect("trigger read lock poisoned").clone()
     }
 
     pub fn add_trigger(
@@ -171,7 +166,12 @@ impl TriggerManager {
                 .find(|t| t.id == id)
                 .ok_or_else(|| "Trigger not found".to_string())?;
 
-            fill_optional_values!(trigger, trigger_text, replacement, category, args_mode, enabled, vars);
+            if let Some(v) = trigger_text { trigger.trigger_text = v; }
+            if let Some(v) = replacement { trigger.replacement = v; }
+            if let Some(v) = category { trigger.category = v; }
+            if let Some(v) = args_mode { trigger.args_mode = v; }
+            if let Some(v) = enabled { trigger.enabled = v; }
+            if let Some(v) = vars { trigger.vars = v; }
 
             trigger.updated_at = chrono::Utc::now().to_rfc3339();
             Ok(trigger.clone())
@@ -237,7 +237,9 @@ impl TriggerManager {
                 .find(|g| g.id == id)
                 .ok_or_else(|| "Global variable not found".to_string())?;
 
-            fill_optional_values!(gv, name, script, enabled);
+            if let Some(v) = name { gv.name = v; }
+            if let Some(v) = script { gv.script = v; }
+            if let Some(v) = enabled { gv.enabled = v; }
 
             Ok(gv.clone())
         }

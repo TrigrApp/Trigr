@@ -9,6 +9,9 @@ use std::{fs, path::PathBuf, sync::{Arc, Mutex}};
 use tauri::{menu::Menu, tray::TrayIconBuilder, Manager, State};
 use trigger::{GlobalVar, TriggerManager, TriggerVar};
 
+const SETTINGS_FILENAME: &str = "settings.json";
+const PACKAGES_RELATIVE_DIR: &str = "src/packages";
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AppSettings {
     pub ender_char: String,
@@ -47,17 +50,19 @@ impl Default for AppSettings {
     }
 }
 
+const AUTOSTART_REGISTRY_PATH: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
 fn enable_autostart() {
-    let exe = std::env::current_exe().unwrap();
+    let Ok(exe) = std::env::current_exe() else { return };
     let path = exe.to_string_lossy();
     let _ = std::process::Command::new("reg")
         .args([
             "add",
-            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            AUTOSTART_REGISTRY_PATH,
             "/v",
             "trigr",
             "/d",
-            &path,
+            &*path,
             "/f",
         ])
         .output();
@@ -322,12 +327,11 @@ fn update_settings(
     language: String,
 ) -> Result<AppSettings, String> {
     let mut settings = state.lock().unwrap();
-    settings.ender_char = ender_char.clone();
-    settings.theme_color = theme_color.clone();
+    settings.ender_char = ender_char;
+    settings.theme_color = theme_color;
     settings.font_size = font_size;
-    settings.language = language.clone();
-    let path = settings::get_settings_path();
-    if let Some(path) = path {
+    settings.language = language;
+    if let Some(path) = settings::get_settings_path() {
         let _ = settings.save(&path);
     }
     Ok(settings.clone())
@@ -386,18 +390,18 @@ pub fn run() {
             app.manage(Mutex::new(manager.clone()));
 
             let packages_dir = {
-                let bundled = app.path().resource_dir().unwrap().join("src/packages");
+                let bundled = app.path().resource_dir().unwrap().join(PACKAGES_RELATIVE_DIR);
                 if bundled.exists() {
                     bundled
                 } else {
-                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/packages")
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PACKAGES_RELATIVE_DIR)
                 }
             };
             let package_mgr = PackageManager::new(data_dir.clone(), packages_dir);
             app.manage(Arc::new(Mutex::new(package_mgr.clone())));
 
             let settings = AppSettings::load(
-                &settings::get_settings_path().unwrap_or_else(|| data_dir.join("settings.json")),
+                &settings::get_settings_path().unwrap_or_else(|| data_dir.join(SETTINGS_FILENAME)),
             );
             app.manage(Arc::new(Mutex::new(settings.clone())));
             settings::init_settings_dir();

@@ -40,9 +40,13 @@ impl Clone for PackageManager {
     }
 }
 
+const PACKAGES_FILENAME: &str = "packages.json";
+const META_FILENAME: &str = "meta.json";
+const TRIGGERS_FILENAME: &str = "triggers.json";
+
 impl PackageManager {
     pub fn new(data_dir: PathBuf, packages_dir: PathBuf) -> Self {
-        let file_path = data_dir.join("packages.json");
+        let file_path = data_dir.join(PACKAGES_FILENAME);
         let state = Self::load_or_create(&file_path);
         Self {
             file_path,
@@ -52,13 +56,10 @@ impl PackageManager {
     }
 
     fn load_or_create(path: &PathBuf) -> PackageFile {
-        if let Ok(Ok(pf)) = fs::read_to_string(path).map(|content| serde_json::from_str(&content)) {
-            pf
-        } else {
-            PackageFile {
-                installed: vec![],
-            }
-        }
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|content| serde_json::from_str(&content).ok())
+            .unwrap_or_else(|| PackageFile { installed: vec![] })
     }
 
     fn save(&self) -> Result<(), String> {
@@ -78,8 +79,8 @@ impl PackageManager {
                 if !path.is_dir() {
                     continue;
                 }
-                let meta_path = path.join("meta.json");
-                let triggers_path = path.join("triggers.json");
+                let meta_path = path.join(META_FILENAME);
+                let triggers_path = path.join(TRIGGERS_FILENAME);
                 if !meta_path.exists() || !triggers_path.exists() {
                     continue;
                 }

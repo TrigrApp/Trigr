@@ -21,6 +21,38 @@ impl Evaluator {
             Expr::Unary { op, expr } => self.eval_unary(op, expr),
             Expr::Call { callee, args } => self.eval_call(callee, args),
             Expr::Index { target, index } => self.eval_index(target, index),
+            Expr::DotAccess { target, field } => {
+                let t = self.evaluate(target)?;
+                match t {
+                    Value::Map(map) => map.get(field).cloned().ok_or_else(|| format!("Key '{field}' not found")),
+                    _ => Err(format!("Cannot access field '{field}' on non-object")),
+                }
+            }
+            Expr::Match { value, arms, default } => {
+                let val = self.evaluate(value)?;
+                let mut matched = false;
+                let mut result = Value::Nil;
+                for (pattern, arm) in arms {
+                    if self.values_equal(&val, pattern) {
+                        result = self.evaluate(arm)?;
+                        matched = true;
+                        break;
+                    }
+                }
+                if !matched {
+                    if let Some(def) = default {
+                        result = self.evaluate(def)?;
+                    }
+                }
+                Ok(result)
+            }
+            Expr::Object(fields) => {
+                let mut map = std::collections::HashMap::new();
+                for (key, expr) in fields {
+                    map.insert(key.clone(), self.evaluate(expr)?);
+                }
+                Ok(Value::Map(map))
+            }
             Expr::If { condition, then_branch, else_branch } => {
                 if self.evaluate(condition)?.as_bool() {
                     self.evaluate(then_branch)
@@ -169,10 +201,6 @@ impl Evaluator {
             arg_values.push(self.evaluate(a)?);
         }
 
-        if let Expr::Call { callee: inner_callee, args: inner_args } = callee && let Expr::Var(inner_name) = inner_callee.as_ref() && inner_name == "random" && inner_args.len() == 1 && let Expr::Var(q) = &inner_args[0] && q == "q" {
-            return self.call_builtin("q_random", &arg_values);
-        }
-
         let Expr::Var(func_name) = callee else {
             return Err("Can only call functions and builtins".to_string());
         };
@@ -215,117 +243,93 @@ impl Evaluator {
 
     fn call_builtin(&mut self, name: &str, args: &[Value]) -> Result<Value, String> {
         match name {
-            "upper" => {
-                let s = args.first().map(|v| v.to_string()).unwrap_or_default();
-                Ok(Value::Str(s.to_uppercase()))
-            }
-            "lower" => {
-                let s = args.first().map(|v| v.to_string()).unwrap_or_default();
-                Ok(Value::Str(s.to_lowercase()))
-            }
-            "trim" => {
-                let s = args.first().map(|v| v.to_string()).unwrap_or_default();
-                Ok(Value::Str(s.trim().to_string()))
-            }
-            "trim_start" => {
-                let s = args.first().map(|v| v.to_string()).unwrap_or_default();
-                Ok(Value::Str(s.trim_start().to_string()))
-            }
-            "trim_end" => {
-                let s = args.first().map(|v| v.to_string()).unwrap_or_default();
-                Ok(Value::Str(s.trim_end().to_string()))
-            }
+            "upper" | "lower" | "trim" | "trim_start" | "trim_end"
+            | "len" | "length" | "repeat" | "replace" | "slice"
+            | "split" | "contains" | "starts_with" | "ends_with"
+            | "substr" | "reverse" | "pad_start" | "pad_end" | "concat"
+            | "title" | "join" => self.call_str(name, args),
+
+            "to_num" | "number" | "to_str" | "string"
+            | "floor" | "ceil" | "ceiling" | "round" | "abs"
+            | "min" | "max" | "clamp" | "rand" | "random" => self.call_math(name, args),
+
+            "list" | "choice" | "first" | "last" | "map" | "filter"
+            | "sort" | "join_list" => self.call_list(name, args),
+
+            "now" | "today" | "date_add" | "date_format" => self.call_date(name, args),
+
+            "if_then_else" | "__builtin_or" | "__builtin_and" => self.call_logic(name, args),
+
+            _ => Ok(self.env.get(name).cloned().unwrap_or(Value::Str(format!("{{{{{name}}}}}")))),
+        }
+    }
+
+    fn arg1_str(&self, args: &[Value]) -> String {
+        args.first().map(|v| v.to_string()).unwrap_or_default()
+    }
+
+    fn call_str(&mut self, name: &str, args: &[Value]) -> Result<Value, String> {
+        match name {
+            "upper" => Ok(Value::Str(self.arg1_str(args).to_uppercase())),
+            "lower" => Ok(Value::Str(self.arg1_str(args).to_lowercase())),
+            "trim" => Ok(Value::Str(self.arg1_str(args).trim().to_string())),
+            "trim_start" => Ok(Value::Str(self.arg1_str(args).trim_start().to_string())),
+            "trim_end" => Ok(Value::Str(self.arg1_str(args).trim_end().to_string())),
             "len" | "length" => {
-                let v = args.first().cloned().unwrap_or(Value::Nil);
-                match v {
-                    Value::List(items) => Ok(Value::Num(items.len() as f64)),
-                    Value::Str(s) => Ok(Value::Num(s.chars().count() as f64)),
-                    _ => Ok(Value::Num(v.to_string().chars().count() as f64)),
+                match args.first() {
+                    Some(Value::List(items)) => Ok(Value::Num(items.len() as f64)),
+                    Some(Value::Str(s)) => Ok(Value::Num(s.chars().count() as f64)),
+                    _ => Ok(Value::Num(self.arg1_str(args).chars().count() as f64)),
                 }
             }
             "repeat" => {
-                if args.len() < 2 {
-                    return Err("repeat requires 2 arguments".to_string());
-                }
-                let s = args[0].to_string();
-                let n = args[1].as_num().ok_or("Second arg must be a number")? as usize;
+                let s = args.first().ok_or("repeat requires a string")?.to_string();
+                let n = args.get(1).and_then(|v| v.as_num()).ok_or("repeat requires a count")? as usize;
                 Ok(Value::Str(s.repeat(n)))
             }
             "replace" => {
-                if args.len() < 3 {
-                    return Err("replace requires 3 arguments".to_string());
-                }
-                let s = args[0].to_string();
-                let from = args[1].to_string();
-                let to = args[2].to_string();
+                let s = args.get(0).ok_or("replace requires 3 arguments")?.to_string();
+                let from = args.get(1).ok_or("replace requires 3 arguments")?.to_string();
+                let to = args.get(2).ok_or("replace requires 3 arguments")?.to_string();
                 Ok(Value::Str(s.replace(&from, &to)))
             }
             "slice" => {
-                if args.len() < 3 {
-                    return Err("slice requires 3 arguments: string, start, end".to_string());
-                }
-                let s = args[0].to_string();
-                let start = args[1].as_num().ok_or("Start must be a number")? as usize;
-                let end = args[2].as_num().ok_or("End must be a number")? as usize;
+                let s = args.get(0).ok_or("slice requires 3 arguments")?.to_string();
+                let start = args.get(1).and_then(|v| v.as_num()).ok_or("start must be a number")? as usize;
+                let end = args.get(2).and_then(|v| v.as_num()).ok_or("end must be a number")? as usize;
                 let chars: Vec<char> = s.chars().collect();
-                if start > chars.len() || end > chars.len() {
+                if start > chars.len() || end > chars.len() || start > end {
                     return Err("slice indices out of bounds".to_string());
                 }
                 Ok(Value::Str(chars[start..end].iter().collect()))
             }
             "split" => {
-                if args.len() < 2 {
-                    return Err("split requires 2 arguments".to_string());
-                }
-                let s = args[0].to_string();
-                let delim = args[1].to_string();
+                let s = args.get(0).ok_or("split requires 2 arguments")?.to_string();
+                let delim = args.get(1).ok_or("split requires a delimiter")?.to_string();
                 let parts: Vec<Value> = s.split(&delim).map(|p| Value::Str(p.to_string())).collect();
                 Ok(Value::List(parts))
             }
-            "join" => {
-                if args.is_empty() { return Err("join requires a list".to_string()); }
-                let sep = if args.len() > 1 { args[1].to_string() } else { String::new() };
-                let parts = match &args[0] {
-                    Value::List(items) => items.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(&sep),
-                    v => v.to_string(),
-                };
-                Ok(Value::Str(parts))
-            }
             "contains" => {
-                if args.len() < 2 {
-                    return Err("contains requires 2 arguments".to_string());
-                }
-                let s = args[0].to_string();
-                let sub = args[1].to_string();
+                let s = args.get(0).ok_or("contains requires 2 arguments")?.to_string();
+                let sub = args.get(1).ok_or("contains requires a substring")?.to_string();
                 Ok(Value::Bool(s.contains(&sub)))
             }
             "starts_with" => {
-                if args.len() < 2 {
-                    return Err("starts_with requires 2 arguments".to_string());
-                }
-                let s = args[0].to_string();
-                let prefix = args[1].to_string();
+                let s = args.get(0).ok_or("starts_with requires 2 arguments")?.to_string();
+                let prefix = args.get(1).ok_or("starts_with requires a prefix")?.to_string();
                 Ok(Value::Bool(s.starts_with(&prefix)))
             }
             "ends_with" => {
-                if args.len() < 2 {
-                    return Err("ends_with requires 2 arguments".to_string());
-                }
-                let s = args[0].to_string();
-                let suffix = args[1].to_string();
+                let s = args.get(0).ok_or("ends_with requires 2 arguments")?.to_string();
+                let suffix = args.get(1).ok_or("ends_with requires a suffix")?.to_string();
                 Ok(Value::Bool(s.ends_with(&suffix)))
             }
             "substr" => {
-                if args.len() < 3 {
-                    return Err("substr requires 3 arguments: string, start, length".to_string());
-                }
-                let s = args[0].to_string();
-                let start = args[1].as_num().ok_or("Start must be a number")? as usize;
-                let len = args[2].as_num().ok_or("Length must be a number")? as usize;
+                let s = args.get(0).ok_or("substr requires 3 arguments")?.to_string();
+                let start = args.get(1).and_then(|v| v.as_num()).ok_or("start must be a number")? as usize;
+                let len = args.get(2).and_then(|v| v.as_num()).ok_or("length must be a number")? as usize;
                 let chars: Vec<char> = s.chars().collect();
-                if start > chars.len() {
-                    return Err("substr start out of bounds".to_string());
-                }
+                let start = start.min(chars.len());
                 let end = (start + len).min(chars.len());
                 Ok(Value::Str(chars[start..end].iter().collect()))
             }
@@ -341,31 +345,17 @@ impl Evaluator {
                 }
             }
             "pad_start" => {
-                if args.len() < 2 {
-                    return Err("pad_start requires string and length".to_string());
-                }
-                let s = args[0].to_string();
-                let target = args[1].as_num().ok_or("Length must be a number")? as usize;
-                let ch = if args.len() > 2 {
-                    args[2].to_string().chars().next().unwrap_or(' ')
-                } else {
-                    ' '
-                };
+                let s = args.get(0).ok_or("pad_start requires string and length")?.to_string();
+                let target = args.get(1).and_then(|v| v.as_num()).ok_or("length must be a number")? as usize;
+                let ch = args.get(2).and_then(|v| v.to_string().chars().next()).unwrap_or(' ');
                 let pad_len = target.saturating_sub(s.chars().count());
                 let padding: String = std::iter::repeat_n(ch, pad_len).collect();
                 Ok(Value::Str(format!("{padding}{s}")))
             }
             "pad_end" => {
-                if args.len() < 2 {
-                    return Err("pad_end requires string and length".to_string());
-                }
-                let s = args[0].to_string();
-                let target = args[1].as_num().ok_or("Length must be a number")? as usize;
-                let ch = if args.len() > 2 {
-                    args[2].to_string().chars().next().unwrap_or(' ')
-                } else {
-                    ' '
-                };
+                let s = args.get(0).ok_or("pad_end requires string and length")?.to_string();
+                let target = args.get(1).and_then(|v| v.as_num()).ok_or("length must be a number")? as usize;
+                let ch = args.get(2).and_then(|v| v.to_string().chars().next()).unwrap_or(' ');
                 let pad_len = target.saturating_sub(s.chars().count());
                 let padding: String = std::iter::repeat_n(ch, pad_len).collect();
                 Ok(Value::Str(format!("{s}{padding}")))
@@ -375,8 +365,8 @@ impl Evaluator {
                 Ok(Value::Str(parts.join("")))
             }
             "title" => {
-                let s = args.first().map(|v| v.to_string()).unwrap_or_default();
-                let mut result = String::new();
+                let s = self.arg1_str(args);
+                let mut result = String::with_capacity(s.len());
                 let mut upper = true;
                 for c in s.chars() {
                     if c.is_whitespace() || c == '-' || c == '_' {
@@ -391,14 +381,27 @@ impl Evaluator {
                 }
                 Ok(Value::Str(result))
             }
+            "join" => {
+                let sep = args.get(1).map(|v| v.to_string()).unwrap_or_default();
+                let parts = match args.first() {
+                    Some(Value::List(items)) => items.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(&sep),
+                    v => v.map(|v| v.to_string()).unwrap_or_default(),
+                };
+                Ok(Value::Str(parts))
+            }
+            _ => Err(format!("Unknown string function: {name}")),
+        }
+    }
+
+    fn call_math(&mut self, name: &str, args: &[Value]) -> Result<Value, String> {
+        match name {
             "to_num" | "number" => {
-                let s = args.first().map(|v| v.to_string()).unwrap_or_default();
-                let n: f64 = s.parse().map_err(|_| format!("Cannot convert '{s}' to number"))?;
-                Ok(Value::Num(n))
+                let s = self.arg1_str(args);
+                s.parse::<f64>().map(Value::Num)
+                    .map_err(|_| format!("Cannot convert '{s}' to number"))
             }
             "to_str" | "string" => {
-                let v = args.first().cloned().unwrap_or(Value::Nil);
-                Ok(Value::Str(v.to_string()))
+                Ok(Value::Str(args.first().cloned().unwrap_or(Value::Nil).to_string()))
             }
             "floor" => {
                 let n = args.first().and_then(|v| v.as_num()).ok_or("floor requires a number")?;
@@ -416,64 +419,25 @@ impl Evaluator {
                 let n = args.first().and_then(|v| v.as_num()).ok_or("abs requires a number")?;
                 Ok(Value::Num(n.abs()))
             }
-            "min" => {
+            "min" | "max" => {
                 if args.is_empty() {
-                    return Err("min requires at least one argument".to_string());
+                    return Err(format!("{name} requires at least one number"));
                 }
-                let mut min = args[0].as_num().ok_or("min requires numbers")?;
+                let cmp = if name == "min" { f64::min as fn(f64, f64) -> f64 } else { f64::max };
+                let mut result = args[0].as_num().ok_or("min/max requires numbers")?;
                 for a in &args[1..] {
-                    let n = a.as_num().ok_or("min requires numbers")?;
-                    if n < min {
-                        min = n;
-                    }
+                    result = cmp(result, a.as_num().ok_or("min/max requires numbers")?);
                 }
-                Ok(Value::Num(min))
-            }
-            "max" => {
-                if args.is_empty() {
-                    return Err("max requires at least one argument".to_string());
-                }
-                let mut max = args[0].as_num().ok_or("max requires numbers")?;
-                for a in &args[1..] {
-                    let n = a.as_num().ok_or("max requires numbers")?;
-                    if n > max {
-                        max = n;
-                    }
-                }
-                Ok(Value::Num(max))
+                Ok(Value::Num(result))
             }
             "clamp" => {
-                if args.len() < 3 {
-                    return Err("clamp requires 3 arguments: value, min, max".to_string());
-                }
-                let v = args[0].as_num().ok_or("clamp requires numbers")?;
-                let lo = args[1].as_num().ok_or("clamp requires numbers")?;
-                let hi = args[2].as_num().ok_or("clamp requires numbers")?;
-                Ok(Value::Num(v.max(lo).min(hi)))
-            }
-            "list" => {
-                Ok(Value::List(args.to_vec()))
-            }
-            "choice" => {
-                match args.first() {
-                    Some(Value::List(items)) if !items.is_empty() => {
-                        use std::time::SystemTime;
-                        let seed = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos() as u64;
-                        Ok(items[(seed % items.len() as u64) as usize].clone())
-                    }
-                    Some(Value::List(_)) => Err("choice requires a non-empty list".to_string()),
-                    _ => {
-                        let items: Vec<Value> = args.to_vec();
-                        if items.is_empty() { return Err("choice requires arguments".to_string()); }
-                        use std::time::SystemTime;
-                        let seed = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos() as u64;
-                        Ok(items[(seed % items.len() as u64) as usize].clone())
-                    }
-                }
+                let v = args.get(0).and_then(|a| a.as_num()).ok_or("clamp requires numbers")?;
+                let lo = args.get(1).and_then(|a| a.as_num()).ok_or("clamp requires numbers")?;
+                let hi = args.get(2).and_then(|a| a.as_num()).ok_or("clamp requires numbers")?;
+                Ok(Value::Num(v.clamp(lo, hi)))
             }
             "rand" | "random" => {
-                use std::time::SystemTime;
-                let seed = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos() as u64;
+                let seed = nano_seed();
                 if args.len() == 2 {
                     let lo = args[0].as_num().ok_or("random requires numbers")? as i64;
                     let hi = args[1].as_num().ok_or("random requires numbers")? as i64;
@@ -485,11 +449,26 @@ impl Evaluator {
                     Err("random takes 0 or 2 arguments".to_string())
                 }
             }
-            "q_random" => {
-                use std::time::SystemTime;
-                let seed = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos() as u64;
-                if args.is_empty() { return Err("q_random requires arguments".to_string()); }
-                Ok(args[(seed % args.len() as u64) as usize].clone())
+            _ => Err(format!("Unknown math function: {name}")),
+        }
+    }
+
+    fn call_list(&mut self, name: &str, args: &[Value]) -> Result<Value, String> {
+        match name {
+            "list" => Ok(Value::List(args.to_vec())),
+            "choice" => {
+                let items = match args.first() {
+                    Some(Value::List(items)) if !items.is_empty() => items.clone(),
+                    Some(Value::List(_)) => return Err("choice requires a non-empty list".to_string()),
+                    _ => {
+                        if args.is_empty() {
+                            return Err("choice requires arguments".to_string());
+                        }
+                        args.to_vec()
+                    }
+                };
+                let seed = nano_seed();
+                Ok(items[(seed % items.len() as u64) as usize].clone())
             }
             "first" => {
                 match args.first() {
@@ -506,33 +485,26 @@ impl Evaluator {
                 }
             }
             "map" => {
-                if args.len() < 2 {
-                    return Err("map requires a list and a function name".to_string());
-                }
-                let items = match &args[0] {
-                    Value::List(items) => items.clone(),
-                    v => vec![v.clone()],
+                let items = match args.first() {
+                    Some(Value::List(items)) => items.clone(),
+                    v => v.map(|v| v.clone()).map(|v| vec![v]).unwrap_or_default(),
                 };
-                let fn_name = args[1].to_string();
-                let mut results = vec![];
+                let fn_name = args.get(1).ok_or("map requires a function name")?.to_string();
+                let mut results = Vec::with_capacity(items.len());
                 for item in &items {
                     self.env.insert("__item".to_string(), item.clone());
-                    let result = self.call_builtin(&fn_name, std::slice::from_ref(item))?;
-                    results.push(result);
+                    results.push(self.call_builtin(&fn_name, std::slice::from_ref(item))?);
                     self.env.remove("__item");
                 }
                 Ok(Value::List(results))
             }
             "filter" => {
-                if args.len() < 2 {
-                    return Err("filter requires a list and a condition".to_string());
-                }
-                let items = match &args[0] {
-                    Value::List(items) => items.clone(),
-                    v => vec![v.clone()],
+                let items = match args.first() {
+                    Some(Value::List(items)) => items.clone(),
+                    v => v.map(|v| v.clone()).map(|v| vec![v]).unwrap_or_default(),
                 };
-                let cond_fn = args[1].to_string();
-                let mut results = vec![];
+                let cond_fn = args.get(1).ok_or("filter requires a condition function")?.to_string();
+                let mut results = Vec::with_capacity(items.len());
                 for item in &items {
                     self.env.insert("__item".to_string(), item.clone());
                     let cond = self.call_builtin(&cond_fn, std::slice::from_ref(item))?;
@@ -548,79 +520,65 @@ impl Evaluator {
                     Some(Value::List(items)) => items.clone(),
                     _ => return Err("sort requires a list".to_string()),
                 };
-                items.sort_by_key(|a| a.to_string());
+                items.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
                 Ok(Value::List(items))
             }
             "join_list" => {
-                if args.len() < 2 {
-                    return Err("join_list requires a list and separator".to_string());
-                }
-                let Value::List(items) = &args[0] else {
+                let Value::List(items) = args.first().ok_or("join_list requires a list")? else {
                     return Err("join_list requires a list".to_string());
                 };
-                let sep = args[1].to_string();
-                let result = items.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(&sep);
-                Ok(Value::Str(result))
+                let sep = args.get(1).map(|v| v.to_string()).unwrap_or_default();
+                let result: Vec<String> = items.iter().map(|v| v.to_string()).collect();
+                Ok(Value::Str(result.join(&sep)))
             }
+            _ => Err(format!("Unknown list function: {name}")),
+        }
+    }
+
+    fn call_date(&mut self, name: &str, args: &[Value]) -> Result<Value, String> {
+        match name {
             "now" => {
-                let format = args.first().map(|v| v.to_string()).unwrap_or_else(|| "%Y-%m-%d %H:%M:%S".to_string());
-                Ok(Value::Str(chrono::Local::now().format(&format).to_string()))
+                let fmt = args.first().map(|v| v.to_string()).unwrap_or_else(|| "%Y-%m-%d %H:%M:%S".to_string());
+                Ok(Value::Str(chrono::Local::now().format(&fmt).to_string()))
             }
             "today" => {
-                let format = args.first().map(|v| v.to_string()).unwrap_or_else(|| "%Y-%m-%d".to_string());
-                Ok(Value::Str(chrono::Local::now().format(&format).to_string()))
+                let fmt = args.first().map(|v| v.to_string()).unwrap_or_else(|| "%Y-%m-%d".to_string());
+                Ok(Value::Str(chrono::Local::now().format(&fmt).to_string()))
             }
             "date_add" => {
-                if args.len() < 2 {
-                    return Err("date_add requires date string and days".to_string());
+                let s = args.get(0).ok_or("date_add requires date string and days")?.to_string();
+                let days = args.get(1).and_then(|v| v.as_num()).ok_or("days must be a number")? as i64;
+                match chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
+                    Ok(dt) => Ok(Value::Str((dt + chrono::Duration::days(days)).format("%Y-%m-%d").to_string())),
+                    Err(_) => {
+                        let dt = chrono::Local::now().date_naive();
+                        Ok(Value::Str((dt + chrono::Duration::days(days)).format(&s).to_string()))
+                    }
                 }
-                let s = args[0].to_string();
-                let days = args[1].as_num().ok_or("Days must be a number")? as i64;
-
-                Ok(Value::Str(if let Ok(dt) = chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
-                    let new_date = dt + chrono::Duration::days(days);
-                    new_date.format("%Y-%m-%d").to_string()
-                } else {
-                    let dt = chrono::Local::now().date_naive();
-                    let new_date = dt + chrono::Duration::days(days);
-                    new_date.format(&s).to_string()
-                }))
             }
             "date_format" => {
-                if args.len() < 2 {
-                    return Err("date_format requires date and format".to_string());
-                }
-                let s = args[0].to_string();
-                let fmt = args[1].to_string();
-                if let Ok(dt) = chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
-                    Ok(Value::Str(dt.format(&fmt).to_string()))
-                } else {
-                    Err(format!("Cannot parse date: {s}"))
+                let s = args.get(0).ok_or("date_format requires date and format")?.to_string();
+                let fmt = args.get(1).ok_or("date_format requires a format string")?.to_string();
+                match chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
+                    Ok(dt) => Ok(Value::Str(dt.format(&fmt).to_string())),
+                    Err(_) => Err(format!("Cannot parse date: {s}")),
                 }
             }
+            _ => Err(format!("Unknown date function: {name}")),
+        }
+    }
+
+    fn call_logic(&mut self, name: &str, args: &[Value]) -> Result<Value, String> {
+        match name {
             "if_then_else" => {
-                if args.len() < 3 {
-                    return Err("if_then_else requires 3 arguments".to_string());
-                }
-                if args[0].as_bool() {
-                    Ok(args[1].clone())
-                } else {
-                    Ok(args[2].clone())
-                }
+                let cond = args.first().ok_or("if_then_else requires 3 arguments")?;
+                let then = args.get(1).ok_or("if_then_else requires 3 arguments")?;
+                let els = args.get(2).ok_or("if_then_else requires 3 arguments")?;
+                Ok(if cond.as_bool() { then.clone() } else { els.clone() })
             }
-            "__builtin_or" => {
-                Ok(Value::Bool(args.iter().any(|v| v.as_bool())))
-            }
-            "__builtin_and" => {
-                Ok(Value::Bool(args.iter().all(|v| v.as_bool())))
-            }
-            _ => {
-                Ok(if let Some(v) = self.env.get(name) {
-                    v.clone()
-                } else {
-                    Value::Str(format!("{{{{{name}}}}}"))
-                })
-            }
+            "__builtin_or" => Ok(Value::Bool(args.iter().any(|v| v.as_bool()))),
+            "__builtin_and" => Ok(Value::Bool(args.iter().all(|v| v.as_bool()))),
+            _ => Err(format!("Unknown logic function: {name}")),
         }
     }
 
@@ -633,4 +591,11 @@ impl Evaluator {
             _ => a.to_string() == b.to_string(),
         }
     }
+}
+
+fn nano_seed() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64
 }

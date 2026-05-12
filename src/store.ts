@@ -10,7 +10,7 @@ interface AppSettings {
 }
 
 interface AppState {
-  view: "triggers" | "globalvars" | "scriptlang" | "packages" | "package-detail" | "settings";
+  view: "triggers" | "globalvars" | "scriptlang" | "scriptrunner" | "packages" | "package-detail" | "settings";
   setView: (v: AppState["view"]) => void;
 
   triggers: Trigger[];
