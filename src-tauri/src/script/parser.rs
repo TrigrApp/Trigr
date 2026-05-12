@@ -71,16 +71,19 @@ impl Parser {
                 Expr::Var(name) => {
                     let value = self.parse_assignment()?;
                     let name_clone = name.clone();
-                    return Ok(Expr::Let {
+
+                    Ok(Expr::Let {
                         name,
                         value: Box::new(value),
                         body: Box::new(Expr::Var(name_clone)),
-                    });
-                }
-                _ => return Err("Invalid assignment target".to_string()),
+                    })
+                },
+
+                _ => Err("Invalid assignment target".to_string()),
             }
+        } else {
+            Ok(expr)
         }
-        Ok(expr)
     }
 
     fn parse_or(&mut self) -> Result<Expr, String> {

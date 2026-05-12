@@ -173,12 +173,11 @@ impl Evaluator {
             return self.call_builtin("q_random", &arg_values);
         }
 
-        let func_name = match callee {
-            Expr::Var(name) => name.clone(),
-            _ => return Err("Can only call functions and builtins".to_string()),
+        let Expr::Var(func_name) = callee else {
+            return Err("Can only call functions and builtins".to_string());
         };
 
-        self.call_builtin(&func_name, &arg_values)
+        self.call_builtin(func_name, &arg_values)
     }
 
     fn eval_call_with_values(&mut self, func_name: &str, arg_values: &[Value]) -> Result<Value, String> {
@@ -556,9 +555,8 @@ impl Evaluator {
                 if args.len() < 2 {
                     return Err("join_list requires a list and separator".to_string());
                 }
-                let items = match &args[0] {
-                    Value::List(items) => items,
-                    _ => return Err("join_list requires a list".to_string()),
+                let Value::List(items) = items else {
+                    return Err("join_list requires a list".to_string());
                 };
                 let sep = args[1].to_string();
                 let result = items.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(&sep);

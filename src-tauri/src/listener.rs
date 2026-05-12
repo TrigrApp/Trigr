@@ -103,9 +103,8 @@ fn handle_char(
         return;
     }
 
-    let name = match &event.name {
-        Some(n) => n,
-        None => return,
+    let Some(name) = &event.name else {
+        return;
     };
 
     if name.len() != 1 {
