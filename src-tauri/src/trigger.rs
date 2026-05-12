@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, sync::{Arc, RwLock}};
 
+macro_rules! fill_optional_values {
+    ($target:ident,$($value:ident),*) => {$(
+        if let Some($value) = $value {
+            $target.$value = $value;
+        }
+    )*};
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trigger {
     pub id: String,
@@ -162,24 +170,9 @@ impl TriggerManager {
                 .iter_mut()
                 .find(|t| t.id == id)
                 .ok_or_else(|| "Trigger not found".to_string())?;
-            if let Some(text) = trigger_text {
-                trigger.trigger_text = text;
-            }
-            if let Some(repl) = replacement {
-                trigger.replacement = repl;
-            }
-            if let Some(cat) = category {
-                trigger.category = cat;
-            }
-            if let Some(am) = args_mode {
-                trigger.args_mode = am;
-            }
-            if let Some(en) = enabled {
-                trigger.enabled = en;
-            }
-            if let Some(v) = vars {
-                trigger.vars = v;
-            }
+
+            fill_optional_values!(trigger, trigger_text, replacement, category, args_mode, enabled, vars);
+
             trigger.updated_at = chrono::Utc::now().to_rfc3339();
             Ok(trigger.clone())
         }
@@ -243,15 +236,9 @@ impl TriggerManager {
                 .iter_mut()
                 .find(|g| g.id == id)
                 .ok_or_else(|| "Global variable not found".to_string())?;
-            if let Some(n) = name {
-                gv.name = n;
-            }
-            if let Some(s) = script {
-                gv.script = s;
-            }
-            if let Some(en) = enabled {
-                gv.enabled = en;
-            }
+
+            fill_optional_values!(gv, name, script, enabled);
+
             Ok(gv.clone())
         }
         .and_then(|gv| {
