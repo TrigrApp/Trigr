@@ -53,15 +53,12 @@ impl PackageManager {
     }
 
     fn load_or_create(path: &PathBuf) -> PackageFile {
-        if path.exists() {
-            if let Ok(content) = fs::read_to_string(path) {
-                if let Ok(pf) = serde_json::from_str(&content) {
-                    return pf;
-                }
+        if let Ok(Ok(pf)) = fs::read_to_string(path).map(|content| serde_json::from_str(&content)) {
+            pf
+        } else {
+            PackageFile {
+                installed: Vec::new(),
             }
-        }
-        PackageFile {
-            installed: Vec::new(),
         }
     }
 
@@ -90,26 +87,20 @@ impl PackageManager {
                 if let (Ok(meta_content), Ok(triggers_content)) = (
                     fs::read_to_string(&meta_path),
                     fs::read_to_string(&triggers_path),
-                ) {
-                    if let Ok(meta) = serde_json::from_str::<PackageMeta>(&meta_content) {
-                        if let Ok(trigger_map) =
-                            serde_json::from_str::<HashMap<String, String>>(&triggers_content)
-                        {
-                            let triggers = trigger_map
-                                .into_iter()
-                                .map(|(trigger, replacement)| {
-                                    Self::make_trigger(&meta.id, trigger, replacement)
-                                })
-                                .collect();
-                            packages.push(Package {
-                                id: meta.id,
-                                name: meta.name,
-                                description: meta.description,
-                                version: meta.version,
-                                triggers,
-                            });
-                        }
-                    }
+                ) && let (Ok(meta), Ok(trigger_map)) = (serde_json::from_str::<PackageMeta>(&meta_content), serde_json::from_str::<HashMap<String, String>>(&triggers_content)) {
+                    let triggers = trigger_map
+                        .into_iter()
+                        .map(|(trigger, replacement)| {
+                            Self::make_trigger(&meta.id, trigger, replacement)
+                        })
+                        .collect();
+                    packages.push(Package {
+                        id: meta.id,
+                        name: meta.name,
+                        description: meta.description,
+                        version: meta.version,
+                        triggers,
+                    });
                 }
             }
         }

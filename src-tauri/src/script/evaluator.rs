@@ -27,8 +27,7 @@ impl Evaluator {
             Expr::Call { callee, args } => self.eval_call(callee, args),
             Expr::Index { target, index } => self.eval_index(target, index),
             Expr::If { condition, then_branch, else_branch } => {
-                let cond = self.evaluate(condition)?.as_bool();
-                if cond {
+                if self.evaluate(condition)?.as_bool() {
                     self.evaluate(then_branch)
                 } else if let Some(els) = else_branch {
                     self.evaluate(els)
@@ -87,18 +86,18 @@ impl Evaluator {
 
         match op {
             BinaryOp::Add => {
-                if let (Value::Num(a), Value::Num(b)) = (&l, &r) {
-                    Ok(Value::Num(a + b))
-                } else if let (Value::Str(a), Value::Str(b)) = (&l, &r) {
-                    Ok(Value::Str(format!("{a}{b}")))
-                } else if let (Value::Str(a), _) = (&l, &r) {
-                    Ok(Value::Str(format!("{a}{}", r.to_string())))
-                } else if let (_, Value::Str(b)) = (&l, &r) {
-                    Ok(Value::Str(format!("{}{b}", l.to_string())))
-                } else if let (Value::Num(a), Value::Str(b)) = (&l, &r) {
-                    Ok(Value::Str(format!("{a}{b}")))
-                } else {
-                    Err(format!("Cannot add {l:?} and {r:?}"))
+                match (&l, &r) {
+                    (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a + b)),
+
+                    (Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
+
+                    (Value::Num(a), Value::Str(b)) => Ok(Value::Str(format!("{a}{b}"))),
+
+                    (Value::Str(a), _) => Ok(Value::Str(format!("{a}{}", r.to_string()))),
+
+                    (_, Value::Str(b)) => Ok(Value::Str(format!("{}{b}", l.to_string()))),
+
+                    _ => Err(format!("Cannot add {l:?} and {r:?}")),
                 }
             }
             BinaryOp::Sub => {
@@ -175,16 +174,8 @@ impl Evaluator {
             arg_values.push(self.evaluate(a)?);
         }
 
-        if let Expr::Call { callee: inner_callee, args: inner_args } = callee {
-            if let Expr::Var(inner_name) = inner_callee.as_ref() {
-                if inner_name == "random" && inner_args.len() == 1 {
-                    if let Expr::Var(q) = &inner_args[0] {
-                        if q == "q" {
-                            return self.call_builtin("q_random", &arg_values);
-                        }
-                    }
-                }
-            }
+        if let Expr::Call { callee: inner_callee, args: inner_args } = callee && let Expr::Var(inner_name) = inner_callee.as_ref() && inner_name == "random" && inner_args.len() == 1 && let Expr::Var(q) = &inner_args[0] && q == "q" {
+            return self.call_builtin("q_random", &arg_values);
         }
 
         let func_name = match callee {

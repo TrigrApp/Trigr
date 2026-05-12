@@ -24,14 +24,11 @@ impl AppSettings {
     }
 
     fn load(path: &PathBuf) -> Self {
-        if path.exists() {
-            if let Ok(content) = fs::read_to_string(path) {
-                if let Ok(s) = serde_json::from_str(&content) {
-                    return s;
-                }
-            }
+        if let Ok(Ok(s)) = fs::read_to_string(path).map(|content| serde_json::from_str(&content)) {
+            s
+        } else {
+            Self::default()
         }
-        Self::default()
     }
 
     fn save(&self, path: &PathBuf) -> Result<(), String> {
@@ -328,10 +325,8 @@ fn uninstall_package(
 
 #[tauri::command]
 fn update_tray_icon(app: tauri::AppHandle, _theme_color: String) -> Result<(), String> {
-    if let Some(tray) = app.tray_by_id("main") {
-        if let Some(icon) = app.default_window_icon() {
-            let _ = tray.set_icon(Some(icon.clone()));
-        }
+    if let (Some(tray), Some(icon)) = (app.tray_by_id("main"), app.default_window_icon()) {
+        let _ = tray.set_icon(Some(icon.clone()));
     }
     Ok(())
 }

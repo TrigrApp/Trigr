@@ -332,23 +332,19 @@ fn resolve_qlang_expressions(
             }
             let mut expr = String::new();
             let mut found_close = false;
-            loop {
-                if let Some(&ch) = chars.peek() {
-                    if ch == '}' {
+            while let Some(&ch) = chars.peek() {
+                if ch == '}' {
+                    chars.next();
+                    if chars.peek() == Some(&'}') {
                         chars.next();
-                        if chars.peek() == Some(&'}') {
-                            chars.next();
-                            found_close = true;
-                            break;
-                        } else {
-                            expr.push('}');
-                        }
+                        found_close = true;
+                        break;
                     } else {
-                        expr.push(ch);
-                        chars.next();
+                        expr.push('}');
                     }
                 } else {
-                    break;
+                    expr.push(ch);
+                    chars.next();
                 }
             }
             if found_close {
