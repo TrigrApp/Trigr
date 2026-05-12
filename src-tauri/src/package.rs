@@ -41,9 +41,8 @@ impl Clone for PackageManager {
 }
 
 impl PackageManager {
-    pub fn new(data_dir: PathBuf) -> Self {
+    pub fn new(data_dir: PathBuf, packages_dir: PathBuf) -> Self {
         let file_path = data_dir.join("packages.json");
-        let packages_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/packages");
         let state = Self::load_or_create(&file_path);
         Self {
             file_path,

@@ -555,7 +555,7 @@ impl Evaluator {
                 if args.len() < 2 {
                     return Err("join_list requires a list and separator".to_string());
                 }
-                let Value::List(items) = items else {
+                let Value::List(items) = &args[0] else {
                     return Err("join_list requires a list".to_string());
                 };
                 let sep = args[1].to_string();

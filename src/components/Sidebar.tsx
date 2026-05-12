@@ -1,18 +1,26 @@
-import { Zap, Hash, BookOpen, Download, Upload, Settings, Package } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Zap, Hash, BookOpen, Download, Upload, Settings, Package, ArrowUpFromLine } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import type { ViewType } from "../types";
+import { readTextFile } from "@tauri-apps/plugin-fs";
+import { check, Update } from "@tauri-apps/plugin-updater";
+import { useStore } from "../store";
+import { t } from "../i18n";
 
-interface SidebarProps {
-  view: ViewType;
-  setView: (v: ViewType) => void;
-  triggerCount: number;
-  globalVarCount: number;
-  onReload: () => void;
-}
+export function Sidebar() {
+  const view = useStore((s) => s.view);
+  const setView = useStore((s) => s.setView);
+  const triggers = useStore((s) => s.triggers);
+  const globalVars = useStore((s) => s.globalVars);
+  const lang = useStore((s) => s.settings.language);
+  const loadData = useStore((s) => s.loadData);
+  const triggerCount = triggers.length;
+  const globalVarCount = globalVars.length;
+  const [update, setUpdate] = useState<Update | null>(null);
 
-export function Sidebar({ view, setView, triggerCount, globalVarCount, onReload }: SidebarProps) {
+  useEffect(() => {
+    check().then((u) => setUpdate(u)).catch(() => {});
+  }, []);
   async function handleExport() {
     try {
       const filePath = await save({
@@ -20,8 +28,7 @@ export function Sidebar({ view, setView, triggerCount, globalVarCount, onReload 
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!filePath) return;
-      const json = await invoke<string>("export_data");
-      await writeTextFile(filePath, json);
+      await invoke("export_data_to_file", { path: filePath });
     } catch (e) {
       console.error("Export failed:", e);
     }
@@ -38,7 +45,7 @@ export function Sidebar({ view, setView, triggerCount, globalVarCount, onReload 
       const json = await readTextFile(filePath as string);
       const result = await invoke<string>("import_data", { json });
       alert(result);
-      onReload();
+      loadData();
     } catch (e) {
       console.error("Import failed:", e);
     }
@@ -58,7 +65,7 @@ export function Sidebar({ view, setView, triggerCount, globalVarCount, onReload 
           onClick={() => setView("triggers")}
         >
           <Zap size={16} />
-          <span className="nav-label">Triggers</span>
+          <span className="nav-label">{t("sidebar.triggers", lang)}</span>
           <span className="nav-badge">{triggerCount}</span>
         </button>
         <button
@@ -66,7 +73,7 @@ export function Sidebar({ view, setView, triggerCount, globalVarCount, onReload 
           onClick={() => setView("globalvars")}
         >
           <Hash size={16} />
-          <span className="nav-label">Variables</span>
+          <span className="nav-label">{t("sidebar.variables", lang)}</span>
           <span className="nav-badge">{globalVarCount}</span>
         </button>
         <button
@@ -74,31 +81,41 @@ export function Sidebar({ view, setView, triggerCount, globalVarCount, onReload 
           onClick={() => setView("scriptlang")}
         >
           <BookOpen size={16} />
-          <span className="nav-label">Documentation</span>
+          <span className="nav-label">{t("sidebar.script", lang)}</span>
         </button>
         <button
           className={`nav-item ${view === "packages" ? "active" : ""}`}
           onClick={() => setView("packages")}
         >
           <Package size={16} />
-          <span className="nav-label">Packages</span>
+          <span className="nav-label">{t("sidebar.packages", lang)}</span>
         </button>
         <button
           className={`nav-item ${view === "settings" ? "active" : ""}`}
           onClick={() => setView("settings")}
         >
           <Settings size={16} />
-          <span className="nav-label">Settings</span>
+          <span className="nav-label">{t("sidebar.settings", lang)}</span>
         </button>
       </nav>
       <div className="sidebar-footer">
+        {update && (
+          <div
+            className="update-banner"
+            onClick={() => update.downloadAndInstall()}
+            title={`Update to ${update.version}`}
+          >
+            <ArrowUpFromLine size={14} />
+            <span>Update Available</span>
+          </div>
+        )}
         <button className="nav-item data-btn" onClick={handleExport}>
           <Download size={14} />
-          <span>Export</span>
+          <span>{t("sidebar.export", lang)}</span>
         </button>
         <button className="nav-item data-btn" onClick={handleImport}>
           <Upload size={14} />
-          <span>Import</span>
+          <span>{t("sidebar.import", lang)}</span>
         </button>
       </div>
     </aside>

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Edit2, Trash2, Plus, ChevronDown, ChevronRight, Search, Zap, Hash } from "lucide-react";
 import "./index.css";
 import { Sidebar } from "./components/Sidebar";
 import { TriggerForm } from "./components/TriggerForm";
@@ -8,48 +8,37 @@ import { GlobalVarForm } from "./components/GlobalVarForm";
 import { ScriptLangView } from "./components/ScriptLangView";
 import { SettingsView } from "./components/SettingsView";
 import { PackagesView, PackageDetailView } from "./components/PackagesView";
-import type { Trigger, GlobalVar, ViewType, Package } from "./types";
+import type { Trigger, GlobalVar, Package } from "./types";
 import { applyThemeColors } from "./utils/color";
+import { useStore } from "./store";
+import { t } from "./i18n";
 
 function App() {
-  const [view, setView] = useState<ViewType>("triggers");
-  const [triggers, setTriggers] = useState<Trigger[]>([]);
-  const [globalVars, setGlobalVars] = useState<GlobalVar[]>([]);
+  const view = useStore((s) => s.view);
+  const setView = useStore((s) => s.setView);
+  const loading = useStore((s) => s.loading);
+  const loadData = useStore((s) => s.loadData);
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const loadData = useCallback(async () => {
-    try {
-      const [t, gv] = await Promise.all([
-        invoke<Trigger[]>("get_triggers"),
-        invoke<GlobalVar[]>("get_global_vars"),
-      ]);
-      setTriggers(t);
-      setGlobalVars(gv);
-    } catch (e) {
-      console.error("Failed to load data:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     loadData();
-    invoke<{ theme_color: string }>("get_settings")
-      .then((s) => applyThemeColors(s.theme_color))
-      .catch(() => {});
+    useStore.getState().loadSettings().then(() => {
+      const s = useStore.getState().settings;
+      applyThemeColors(s.theme_color);
+      document.documentElement.style.fontSize = `${s.font_size}px`;
+    });
   }, [loadData]);
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={setView} triggerCount={triggers.length} globalVarCount={globalVars.length} onReload={loadData} />
+      <Sidebar />
       <main className="main-content">
         {loading ? (
-          <div className="loading">Loading...</div>
+          <div className="loading">Loading</div>
         ) : view === "triggers" ? (
-          <TriggerView triggers={triggers} setTriggers={setTriggers} globalVars={globalVars} />
+          <TriggerView />
         ) : view === "globalvars" ? (
-          <GlobalVarsView globalVars={globalVars} setGlobalVars={setGlobalVars} />
+          <GlobalVarsView />
         ) : view === "scriptlang" ? (
           <ScriptLangView />
         ) : view === "packages" ? (
@@ -73,7 +62,11 @@ function App() {
   );
 }
 
-function TriggerView({ triggers, setTriggers, globalVars }: { triggers: Trigger[]; setTriggers: (t: Trigger[]) => void; globalVars: GlobalVar[] }) {
+function TriggerView() {
+  const lang = useStore((s) => s.settings.language);
+  const triggers = useStore((s) => s.triggers);
+  const setTriggers = useStore((s) => s.setTriggers);
+  const globalVars = useStore((s) => s.globalVars);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -105,7 +98,7 @@ function TriggerView({ triggers, setTriggers, globalVars }: { triggers: Trigger[
   const uncategorized = useMemo(() => filtered.filter((t) => !t.category), [filtered]);
 
   async function handleDelete(id: string) {
-    await invoke("delete_trigger", { id });
+    await invoke("delete_item", { itemType: "trigger", id });
     setTriggers(triggers.filter((t) => t.id !== id));
   }
 
@@ -131,10 +124,10 @@ function TriggerView({ triggers, setTriggers, globalVars }: { triggers: Trigger[
     <div className="view-container">
       <div className="view-header view-header-row">
         <div className="view-header-text">
-          <h1>Triggers</h1>
-          <p className="view-subtitle">Define text triggers that auto-expand as you type</p>
+          <h1>{t("triggers.title", lang)}</h1>
+          <p className="view-subtitle">{t("triggers.subtitle", lang)}</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={16} /> New Trigger</button>
+        <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={16} /> {t("triggers.new", lang)}</button>
       </div>
 
       {showAdd && (
@@ -162,7 +155,7 @@ function TriggerView({ triggers, setTriggers, globalVars }: { triggers: Trigger[
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search triggers..."
+          placeholder={t("triggers.search", lang)}
           className="search-input"
         />
         {search && (
@@ -207,13 +200,15 @@ function TriggerView({ triggers, setTriggers, globalVars }: { triggers: Trigger[
 
       {triggers.length === 0 && (
         <div className="empty-state">
-          <h3>No triggers yet</h3>
-          <p>Create your first trigger to get started</p>
+          <Zap size={32} className="empty-icon" />
+          <h3>{t("triggers.empty", lang)}</h3>
+          <p>{t("triggers.empty_hint", lang)}</p>
         </div>
       )}
 
       {triggers.length > 0 && filtered.length === 0 && (
         <div className="empty-state">
+          <Search size={32} className="empty-icon" />
           <h3>No matches</h3>
           <p>Try a different search term</p>
         </div>
@@ -310,12 +305,15 @@ function TriggerCard({
   );
 }
 
-function GlobalVarsView({ globalVars, setGlobalVars }: { globalVars: GlobalVar[]; setGlobalVars: (v: GlobalVar[]) => void }) {
+function GlobalVarsView() {
+  const lang = useStore((s) => s.settings.language);
+  const globalVars = useStore((s) => s.globalVars);
+  const setGlobalVars = useStore((s) => s.setGlobalVars);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   async function handleDelete(id: string) {
-    await invoke("delete_global_var", { id });
+    await invoke("delete_item", { itemType: "global_var", id });
     setGlobalVars(globalVars.filter((v) => v.id !== id));
   }
 
@@ -341,10 +339,10 @@ function GlobalVarsView({ globalVars, setGlobalVars }: { globalVars: GlobalVar[]
     <div className="view-container">
       <div className="view-header view-header-row">
         <div className="view-header-text">
-          <h1>Variables</h1>
-          <p className="view-subtitle">Variables available across all triggers. Use {"{{name}}"} in replacements.</p>
+          <h1>{t("variables.title", lang)}</h1>
+          <p className="view-subtitle">{t("variables.subtitle", lang)}</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={16} /> New Variable</button>
+        <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus size={16} /> {t("variables.new", lang)}</button>
       </div>
 
       {showAdd && (
@@ -365,8 +363,9 @@ function GlobalVarsView({ globalVars, setGlobalVars }: { globalVars: GlobalVar[]
       <div className="globalvar-list">
         {globalVars.length === 0 ? (
           <div className="empty-state">
-            <h3>No global variables</h3>
-            <p>Create global variables using qlang expressions to reuse values across all triggers</p>
+            <Hash size={32} className="empty-icon" />
+            <h3>{t("variables.empty", lang)}</h3>
+            <p>{t("variables.empty_hint", lang)}</p>
           </div>
         ) : (
           globalVars.map((gv) => (

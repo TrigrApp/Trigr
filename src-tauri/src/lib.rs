@@ -13,6 +13,8 @@ use trigger::{GlobalVar, TriggerManager, TriggerVar};
 pub struct AppSettings {
     pub ender_char: String,
     pub theme_color: String,
+    pub font_size: u32,
+    pub language: String,
 }
 
 impl AppSettings {
@@ -39,6 +41,8 @@ impl Default for AppSettings {
         Self {
             ender_char: "!".to_string(),
             theme_color: "#8b5cf6".to_string(),
+            font_size: 14,
+            language: "en".to_string(),
         }
     }
 }
@@ -95,6 +99,21 @@ impl From<trigger::Trigger> for TriggerExport {
     }
 }
 
+#[derive(serde::Serialize)]
+struct AllData {
+    triggers: Vec<trigger::Trigger>,
+    global_vars: Vec<GlobalVar>,
+}
+
+#[tauri::command]
+fn get_all_data(manager: State<Mutex<TriggerManager>>) -> AllData {
+    let m = manager.lock().unwrap();
+    AllData {
+        triggers: m.get_triggers(),
+        global_vars: m.get_global_vars(),
+    }
+}
+
 #[tauri::command]
 fn get_triggers(manager: State<Mutex<TriggerManager>>) -> Vec<trigger::Trigger> {
     manager.lock().unwrap().get_triggers()
@@ -141,8 +160,13 @@ fn update_trigger(
 }
 
 #[tauri::command]
-fn delete_trigger(manager: State<Mutex<TriggerManager>>, id: String) -> Result<(), String> {
-    manager.lock().unwrap().delete_trigger(id)
+fn delete_item(manager: State<Mutex<TriggerManager>>, item_type: String, id: String) -> Result<(), String> {
+    let m = manager.lock().unwrap();
+    match item_type.as_str() {
+        "trigger" => m.delete_trigger(id),
+        "global_var" => m.delete_global_var(id),
+        _ => Err(format!("Unknown item type: {item_type}")),
+    }
 }
 
 #[tauri::command]
@@ -171,11 +195,6 @@ fn update_global_var(
         .lock()
         .unwrap()
         .update_global_var(id, name, script, enabled)
-}
-
-#[tauri::command]
-fn delete_global_var(manager: State<Mutex<TriggerManager>>, id: String) -> Result<(), String> {
-    manager.lock().unwrap().delete_global_var(id)
 }
 
 #[tauri::command]
@@ -237,6 +256,17 @@ fn export_data(manager: State<Mutex<TriggerManager>>) -> Result<String, String> 
 }
 
 #[tauri::command]
+fn export_data_to_file(manager: State<Mutex<TriggerManager>>, path: String) -> Result<(), String> {
+    let json = export_data(manager)?;
+    let path = PathBuf::from(&path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn import_data(manager: State<Mutex<TriggerManager>>, json: String) -> Result<String, String> {
     let data: ExportData =
         serde_json::from_str(&json).map_err(|e| format!("Invalid format: {e}"))?;
@@ -288,10 +318,14 @@ fn update_settings(
     state: State<Arc<Mutex<AppSettings>>>,
     ender_char: String,
     theme_color: String,
+    font_size: u32,
+    language: String,
 ) -> Result<AppSettings, String> {
     let mut settings = state.lock().unwrap();
     settings.ender_char = ender_char.clone();
     settings.theme_color = theme_color.clone();
+    settings.font_size = font_size;
+    settings.language = language.clone();
     let path = settings::get_settings_path();
     if let Some(path) = path {
         let _ = settings.save(&path);
@@ -327,8 +361,8 @@ fn uninstall_package(
 
 #[tauri::command]
 fn update_tray_icon(app: tauri::AppHandle, _theme_color: String) -> Result<(), String> {
-    if let (Some(tray), Some(icon)) = (app.tray_by_id("main"), app.default_window_icon()) {
-        let _ = tray.set_icon(Some(icon.clone()));
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_icon(Some(tauri::include_image!("icons/64x64.png")));
     }
     Ok(())
 }
@@ -339,12 +373,27 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data_dir = app.path().app_data_dir().unwrap();
             let manager = TriggerManager::new(data_dir.clone());
             app.manage(Mutex::new(manager.clone()));
 
-            let package_mgr = PackageManager::new(data_dir.clone());
+            let packages_dir = {
+                let bundled = app.path().resource_dir().unwrap().join("src/packages");
+                if bundled.exists() {
+                    bundled
+                } else {
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/packages")
+                }
+            };
+            let package_mgr = PackageManager::new(data_dir.clone(), packages_dir);
             app.manage(Arc::new(Mutex::new(package_mgr.clone())));
 
             let settings = AppSettings::load(
@@ -373,7 +422,7 @@ pub fn run() {
             .unwrap();
 
             let _ = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tauri::include_image!("icons/64x64.png"))
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "show" => {
@@ -408,18 +457,19 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            get_all_data,
             get_triggers,
             add_trigger,
             update_trigger,
-            delete_trigger,
+            delete_item,
             get_global_vars,
             add_global_var,
             update_global_var,
-            delete_global_var,
             preview_replacement,
             evaluate_script,
             preview_script,
             export_data,
+            export_data_to_file,
             import_data,
             show_window,
             hide_window,

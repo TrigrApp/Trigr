@@ -1,6 +1,8 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Play, Copy, Check, Terminal, X } from "lucide-react";
+import { Play, Copy, Check, Terminal, X, Search } from "lucide-react";
+import { useStore } from "../store";
+import { t } from "../i18n";
 
 
 type TokenType = "string" | "number" | "keyword" | "function" | "operator" | "paren" | "bracket" | "comment" | "variable" | "boolean" | "list" | "plain";
@@ -22,9 +24,8 @@ const BUILTIN_FUNCTIONS = new Set([
 function tokenize(code: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
-  
+
   while (i < code.length) {
-    
     if (code[i] === "/" && code[i + 1] === "/") {
       let end = code.indexOf("\n", i);
       if (end === -1) end = code.length;
@@ -32,8 +33,7 @@ function tokenize(code: string): Token[] {
       i = end;
       continue;
     }
-    
-    
+
     if (code[i] === '"' || code[i] === "'") {
       const quote = code[i];
       let j = i + 1;
@@ -45,8 +45,7 @@ function tokenize(code: string): Token[] {
       i = j + 1;
       continue;
     }
-    
-    
+
     if (/[0-9]/.test(code[i]) && (i === 0 || /[\s([{,+\-*/%=<>!]/.test(code[i - 1]))) {
       let j = i;
       while (j < code.length && /[0-9.]/.test(code[j])) j++;
@@ -54,13 +53,11 @@ function tokenize(code: string): Token[] {
       i = j;
       continue;
     }
-    
-    
+
     if (/[a-zA-Z_]/.test(code[i])) {
       let j = i;
       while (j < code.length && /[a-zA-Z0-9_]/.test(code[j])) j++;
       const word = code.slice(i, j);
-      
       if (BUILTIN_FUNCTIONS.has(word)) {
         tokens.push({ type: "function", value: word });
       } else if (KEYWORDS.has(word)) {
@@ -73,47 +70,41 @@ function tokenize(code: string): Token[] {
       i = j;
       continue;
     }
-    
-    
+
     if ("+-*/%=<>!".includes(code[i])) {
       tokens.push({ type: "operator", value: code[i] });
       i++;
       continue;
     }
-    
-    
+
     if ("[]".includes(code[i])) {
       tokens.push({ type: "bracket", value: code[i] });
       i++;
       continue;
     }
-    
-    
+
     if ("()".includes(code[i])) {
       tokens.push({ type: "paren", value: code[i] });
       i++;
       continue;
     }
-    
-    
+
     if (code[i] === ",") {
       tokens.push({ type: "operator", value: code[i] });
       i++;
       continue;
     }
-    
-    
+
     if (/\s/.test(code[i])) {
       tokens.push({ type: "plain", value: code[i] });
       i++;
       continue;
     }
-    
-    
+
     tokens.push({ type: "plain", value: code[i] });
     i++;
   }
-  
+
   return tokens;
 }
 
@@ -136,7 +127,7 @@ function CodeEditor({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbers = getLineCount(value);
-  
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
@@ -164,7 +155,7 @@ function CodeEditor({
           <span className="dot dot-yellow" />
           <span className="dot dot-green" />
         </div>
-        <span className="editor-title">qlang — REPL</span>
+        <span className="editor-title">Trill — REPL</span>
         <button className="editor-run-btn" onClick={onRun} disabled={running}>
           <Terminal size={13} />
           {running ? "Running..." : "Run"}
@@ -208,18 +199,17 @@ function CodeEditor({
   );
 }
 
-
 const DOC_SECTIONS = [
   {
     id: "quick-start",
     title: "Quick Start",
-    content: `Variables use qlang scripts for dynamic text generation. Use {{varname}} in your replacement text to reference a variable.`,
+    content: "Variables use Trill scripts for dynamic text generation. Use {{varname}} in your replacement text to reference a variable.",
     example: { label: "Replacement text", code: 'Dear {{firstname}},\n\nToday is {{todaydate}}.\n\nBest regards' }
   },
   {
     id: "syntax",
     title: "Syntax",
-    content: `qlang supports string literals, numbers, arithmetic, function calls, list indexing, and conditional expressions.`,
+    content: "Trill supports string literals, numbers, arithmetic, function calls, list indexing, and conditional expressions.",
     example: { label: "Basic expression", code: '"Hello, " + upper(name) + "! Today is " + date("%B %d")' }
   }
 ];
@@ -246,8 +236,8 @@ const RUNNABLE_EXAMPLES = [
   {
     title: "String manipulation",
     description: "Replace and trim operations",
-    code: 'trim(replace("  hello world  ", "world", "qlang"))',
-    expected: "hello qlang"
+    code: 'trim(replace("  hello world  ", "world", "trill"))',
+    expected: "hello trill"
   },
   {
     title: "Conditional",
@@ -348,7 +338,7 @@ const ARGS_SECTION = {
       title: "Join all arguments",
       desc: "Combine all arguments with spaces",
       trigger: ";join hello beautiful world!",
-      code: "join(args, \" \")",
+      code: 'join(args, " ")',
       output: "hello beautiful world"
     },
     {
@@ -369,20 +359,46 @@ const ARGS_SECTION = {
       title: "Argument count",
       desc: "Get how many arguments were passed",
       trigger: ";count a b c d!",
-      code: "\"You passed \" + len(args) + \" args\"",
+      code: '"You passed " + len(args) + " args"',
       output: "You passed 4 args"
     },
     {
       title: "Conditional on args",
       desc: "Different output based on first argument",
       trigger: ";greet morning!",
-      code: "if args[0] == \"morning\", \"Good morning!\", \"Good evening!\"",
+      code: 'if args[0] == "morning", "Good morning!", "Good evening!"',
       output: "Good morning!"
     }
   ]
 };
 
+function sanitizeId(s: string): string {
+  return s.toLowerCase().replace(/[\s&]+/g, "-").replace(/[^a-z0-9-]/g, "");
+}
+
+const SECTION_IDS = [
+  "quick-start",
+  "syntax",
+  "try-it",
+  "examples",
+  "trigger-args",
+  ...FUNCTION_CATEGORIES.map((c) => `func-${sanitizeId(c.category)}`),
+];
+
+const TOC_ITEMS = [
+  { id: "quick-start", label: "Quick Start" },
+  { id: "syntax", label: "Syntax" },
+  { id: "try-it", label: "Try It Yourself" },
+  { id: "examples", label: "Examples" },
+  { id: "trigger-args", label: "Trigger Arguments" },
+  ...FUNCTION_CATEGORIES.map((c) => ({
+    id: `func-${sanitizeId(c.category)}`,
+    label: c.category,
+  })),
+];
+
 export function ScriptLangView() {
+  const lang = useStore((s) => s.settings.language);
   const [testCode, setTestCode] = useState("");
   const [testResult, setTestResult] = useState("");
   const [testError, setTestError] = useState("");
@@ -390,6 +406,54 @@ export function ScriptLangView() {
   const [copied, setCopied] = useState(false);
   const [results, setResults] = useState<Record<string, string>>({});
   const [exampleRunning, setExampleRunning] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState("quick-start");
+  const [searchQuery, setSearchQuery] = useState("");
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const filteredToc = TOC_ITEMS.filter((item) =>
+    item.label.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  useEffect(() => {
+    const scrollContainer = document.querySelector(".main-content");
+    if (!scrollContainer) return;
+
+    function updateActive() {
+      let bestId = SECTION_IDS[0];
+      let bestDist = Infinity;
+      for (const id of SECTION_IDS) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        const dist = Math.abs(el.getBoundingClientRect().top);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestId = id;
+        }
+      }
+      setActiveSection((prev) => (prev !== bestId ? bestId : prev));
+    }
+
+    updateActive();
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          updateActive();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    scrollContainer.addEventListener("scroll", onScroll, { passive: true });
+    return () => scrollContainer.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToSection = useCallback((id: string) => {
+    const section = contentRef.current?.querySelector(`#${id}`);
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
 
   async function runTest() {
     if (!testCode.trim()) return;
@@ -427,184 +491,215 @@ export function ScriptLangView() {
     setTestCode(code);
     setTestResult("");
     setTestError("");
+    const tryIt = contentRef.current?.querySelector("#try-it");
+    if (tryIt) tryIt.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  return (
-    <div className="view-container doc-view">
-      <div className="view-header">
-        <div>
-          <h1>qlang Documentation</h1>
-          <p className="view-subtitle">Custom scripting language for dynamic text generation</p>
-        </div>
-      </div>
+  const sectionId = (category: string) =>
+    `func-${sanitizeId(category)}`;
 
-      {/* Quick start sections */}
-      {DOC_SECTIONS.map((section) => (
-        <div key={section.id} className="doc-section">
-          <h2 className="doc-section-title">{section.title}</h2>
-          <p className="doc-text">{section.content}</p>
+  return (
+    <div className="doc-layout">
+      <aside className="doc-sidebar">
+        <div className="doc-sidebar-header">Contents</div>
+        <div className="doc-search">
+          <Search size={14} className="doc-search-icon" />
+          <input
+            type="text"
+            className="doc-search-input"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className="doc-search-clear" onClick={() => setSearchQuery("")}>
+              <X size={12} />
+            </button>
+          )}
+        </div>
+        <nav className="doc-toc">
+          {filteredToc.map((item) => (
+            <button
+              key={item.id}
+              className={`doc-toc-item ${activeSection === item.id ? "active" : ""}`}
+              onClick={() => scrollToSection(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+          {filteredToc.length === 0 && (
+            <span className="doc-toc-empty">No results</span>
+          )}
+        </nav>
+      </aside>
+      <main className="doc-main" ref={contentRef}>
+        <div className="view-header">
+          <h1>{t("script.title", lang)}</h1>
+          <p className="view-subtitle">{t("script.subtitle", lang)}</p>
+        </div>
+
+          {DOC_SECTIONS.map((section) => (
+          <div key={section.id} id={section.id} className="doc-section">
+            <h2 className="doc-section-title">{section.title}</h2>
+            <p className="doc-text">{section.content}</p>
+            <div className="code-block">
+              <div className="code-block-header">
+                <span className="code-label">{section.example.label}</span>
+                <button className="copy-btn" onClick={() => copyCode(section.example.code)} title="Copy">
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+              <div className="code-content">
+                {section.example.code.split("\n").map((line, i) => (
+                  <div key={i}>
+                    {tokenize(line).map((token, j) => (
+                      <span key={j} className={`token-${token.type}`}>
+                        {token.value}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div id="try-it" className="doc-section">
+          <h2 className="doc-section-title">Try It Yourself</h2>
+          <CodeEditor
+            value={testCode}
+            onChange={setTestCode}
+            placeholder="Enter a Trill expression..."
+            onRun={runTest}
+            running={running}
+          />
+          {(testResult || testError) && (
+            <div className={`editor-output ${testError ? "output-error" : ""}`}>
+              <div className="output-header">
+                <Terminal size={13} />
+                <span>{testError ? "Error" : "Output"}</span>
+                <button className="output-clear" onClick={() => { setTestResult(""); setTestError(""); }}>
+                  <X size={12} />
+                </button>
+              </div>
+              <pre className="output-content">{testResult || testError}</pre>
+            </div>
+          )}
+        </div>
+
+        <div id="examples" className="doc-section">
+          <h2 className="doc-section-title">Examples</h2>
+          <p className="doc-text">Click run to execute, or click the code to load into the editor</p>
+          <div className="examples-grid">
+            {RUNNABLE_EXAMPLES.map((ex, i) => {
+              const id = `example-${i}`;
+              const result = results[id];
+              return (
+                <div key={i} className="example-card">
+                  <div className="example-card-header">
+                    <h4>{ex.title}</h4>
+                    <button
+                      className="run-example-btn"
+                      onClick={() => runExample(ex.code, id)}
+                      disabled={exampleRunning === id}
+                    >
+                      <Play size={12} />
+                      {exampleRunning === id ? "..." : "Run"}
+                    </button>
+                  </div>
+                  <div className="example-code" onClick={() => loadExample(ex.code)} title="Click to load in editor">
+                    {tokenize(ex.code).map((token, j) => (
+                      <span key={j} className={`token-${token.type}`}>
+                        {token.value}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="example-desc">{ex.description}</p>
+                  {result && (
+                    <div className="example-result">
+                      <span className="result-label">→</span>
+                      <code>{result}</code>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div id="trigger-args" className="doc-section">
+          <h2 className="doc-section-title">{ARGS_SECTION.title}</h2>
+          <p className="doc-text">{ARGS_SECTION.content}</p>
           <div className="code-block">
             <div className="code-block-header">
-              <span className="code-label">{section.example.label}</span>
-              <button className="copy-btn" onClick={() => copyCode(section.example.code)} title="Copy">
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </button>
+              <span className="code-label">How it works</span>
             </div>
             <div className="code-content">
-              {section.example.code.split("\n").map((line, i) => (
-                <div key={i}>
-                  {tokenize(line).map((token, j) => (
-                    <span key={j} className={`token-${token.type}`}>
-                      {token.value}
-                    </span>
-                  ))}
-                </div>
-              ))}
+              <span className="token-variable">;rand</span>
+              <span className="token-plain"> one two three</span>
+              <span className="token-keyword">!</span>{"\n"}{"\n"}
+              <span className="token-function">args</span>
+              <span className="token-bracket">[</span>
+              <span className="token-function">rand</span>
+              <span className="token-paren">(</span>
+              <span className="token-number">0</span>
+              <span className="token-operator">,</span>
+              <span className="token-plain"> </span>
+              <span className="token-function">len</span>
+              <span className="token-paren">(</span>
+              <span className="token-function">args</span>
+              <span className="token-paren">)</span>
+              <span className="token-plain"> </span>
+              <span className="token-operator">-</span>
+              <span className="token-plain"> </span>
+              <span className="token-number">1</span>
+              <span className="token-paren">)</span>
+              <span className="token-bracket">]</span>
             </div>
           </div>
-        </div>
-      ))}
 
-      {/* Try it yourself — Code Editor */}
-      <div className="doc-section">
-        <h2 className="doc-section-title">Try it yourself</h2>
-        <CodeEditor
-          value={testCode}
-          onChange={setTestCode}
-          placeholder='Enter a qlang expression...'
-          onRun={runTest}
-          running={running}
-        />
-        {(testResult || testError) && (
-          <div className={`editor-output ${testError ? "output-error" : ""}`}>
-            <div className="output-header">
-              <Terminal size={13} />
-              <span>{testError ? "Error" : "Output"}</span>
-              <button className="output-clear" onClick={() => { setTestResult(""); setTestError(""); }}>
-                <X size={12} />
-              </button>
-            </div>
-            <pre className="output-content">{testResult || testError}</pre>
-          </div>
-        )}
-      </div>
-
-      {/* Runnable examples */}
-      <div className="doc-section">
-        <h2 className="doc-section-title">Examples</h2>
-        <p className="doc-text">Click run to execute, or click the code to load into the editor</p>
-        <div className="examples-grid">
-          {RUNNABLE_EXAMPLES.map((ex, i) => {
-            const id = `example-${i}`;
-            const result = results[id];
-            return (
-              <div key={i} className="example-card">
-                <div className="example-card-header">
+          <div className="args-examples-grid">
+            {ARGS_SECTION.examples.map((ex, i) => (
+              <div key={i} className="args-example-card">
+                <div className="args-example-header">
                   <h4>{ex.title}</h4>
-                  <button
-                    className="run-example-btn"
-                    onClick={() => runExample(ex.code, id)}
-                    disabled={exampleRunning === id}
-                  >
-                    <Play size={12} />
-                    {exampleRunning === id ? "..." : "Run"}
-                  </button>
+                  <span className="args-trigger">{ex.trigger}</span>
                 </div>
-                <div className="example-code" onClick={() => loadExample(ex.code)} title="Click to load in editor">
+                <p className="args-example-desc">{ex.desc}</p>
+                <div className="args-example-code" onClick={() => loadExample(ex.code)} title="Click to load in editor">
                   {tokenize(ex.code).map((token, j) => (
                     <span key={j} className={`token-${token.type}`}>
                       {token.value}
                     </span>
                   ))}
                 </div>
-                <p className="example-desc">{ex.description}</p>
-                {result && (
-                  <div className="example-result">
-                    <span className="result-label">→</span>
-                    <code>{result}</code>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Trigger Arguments */}
-      <div className="doc-section">
-        <h2 className="doc-section-title">{ARGS_SECTION.title}</h2>
-        <p className="doc-text">{ARGS_SECTION.content}</p>
-        <div className="code-block">
-          <div className="code-block-header">
-            <span className="code-label">How it works</span>
-          </div>
-          <div className="code-content">
-            <span className="token-variable">;rand</span>
-            <span className="token-plain"> one two three</span>
-            <span className="token-keyword">!</span>{"\n"}
-            {"\n"}
-            <span className="token-function">args</span>
-            <span className="token-bracket">[</span>
-            <span className="token-function">rand</span>
-            <span className="token-paren">(</span>
-            <span className="token-number">0</span>
-            <span className="token-operator">,</span>
-            <span className="token-plain"> </span>
-            <span className="token-function">len</span>
-            <span className="token-paren">(</span>
-            <span className="token-function">args</span>
-            <span className="token-paren">)</span>
-            <span className="token-plain"> </span>
-            <span className="token-operator">-</span>
-            <span className="token-plain"> </span>
-            <span className="token-number">1</span>
-            <span className="token-paren">)</span>
-            <span className="token-bracket">]</span>
-          </div>
-        </div>
-
-        <div className="args-examples-grid">
-          {ARGS_SECTION.examples.map((ex, i) => (
-            <div key={i} className="args-example-card">
-              <div className="args-example-header">
-                <h4>{ex.title}</h4>
-                <span className="args-trigger">{ex.trigger}</span>
-              </div>
-              <p className="args-example-desc">{ex.desc}</p>
-              <div className="args-example-code" onClick={() => loadExample(ex.code)} title="Click to load in editor">
-                {tokenize(ex.code).map((token, j) => (
-                  <span key={j} className={`token-${token.type}`}>
-                    {token.value}
-                  </span>
-                ))}
-              </div>
-              <div className="args-example-output">
-                <span className="output-arrow">→</span>
-                <code>{ex.output}</code>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Function reference */}
-      {FUNCTION_CATEGORIES.map((section) => (
-        <div key={section.category} className="doc-section">
-          <h2 className="doc-section-title">{section.category}</h2>
-          <div className="func-table">
-            <div className="func-row func-row-header">
-              <span>Function</span>
-              <span>Description</span>
-            </div>
-            {section.funcs.map((fn) => (
-              <div key={fn.name} className="func-row">
-                <code className="func-name">{fn.name}</code>
-                <span className="func-desc">{fn.desc}</span>
+                <div className="args-example-output">
+                  <span className="output-arrow">→</span>
+                  <code>{ex.output}</code>
+                </div>
               </div>
             ))}
           </div>
         </div>
-      ))}
+
+        {FUNCTION_CATEGORIES.map((section) => (
+          <div key={section.category} id={sectionId(section.category)} className="doc-section">
+            <h2 className="doc-section-title">{section.category}</h2>
+            <div className="func-table">
+              <div className="func-row func-row-header">
+                <span>Function</span>
+                <span>Description</span>
+              </div>
+              {section.funcs.map((fn) => (
+                <div key={fn.name} className="func-row">
+                  <code className="func-name">{fn.name}</code>
+                  <span className="func-desc">{fn.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </main>
     </div>
   );
 }

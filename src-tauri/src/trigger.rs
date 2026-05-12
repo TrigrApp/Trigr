@@ -295,13 +295,13 @@ impl TriggerManager {
 
         result = resolve_builtin_vars(&result);
 
-        result = resolve_qlang_expressions(&result, &var_values, args);
+        result = resolve_trill_expressions(&result, &var_values, args);
 
         result
     }
 }
 
-fn resolve_qlang_expressions(
+fn resolve_trill_expressions(
     text: &str,
     context: &HashMap<String, String>,
     args: &[String],

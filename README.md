@@ -6,8 +6,8 @@ A cross-platform text expander that runs in the background. Define trigger keywo
 
 - **Trigger-based expansion**: Type a trigger keyword and it automatically expands
 - **Argument mode**: Use `!` to capture arguments for dynamic replacements
-- **Variables**: Define global variables using qlang expressions
-- **Scripting**: Use qlang for complex transformations and conditions
+- **Variables**: Define global variables using Trill expressions
+- **Scripting**: Use Trill for complex transformations and conditions
 - **Packages**: Install pre-made trigger packages for common content
 - **System tray**: Runs in background, accessible via system tray icon
 - **Cross-platform**: Windows support with hotkey listener
@@ -65,4 +65,4 @@ npm run tauri build
 - Tauri 2 (Rust backend)
 - React + TypeScript (frontend)
 - Vite (build tool)
-- qlang (scripting engine for replacements)
+- Trill (scripting engine for replacements)

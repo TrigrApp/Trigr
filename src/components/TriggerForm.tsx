@@ -138,7 +138,7 @@ export function TriggerForm({ trigger, onSave, onCancel, globalVars: _globalVars
         <textarea
           value={replacement}
           onChange={(e) => setReplacement(e.target.value)}
-          placeholder="Use {{expression}} for inline qlang"
+          placeholder='Use {{expression}} for inline Trill'
           rows={4}
           className="input-field textarea"
         />
