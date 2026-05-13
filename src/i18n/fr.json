@@ -3,6 +3,7 @@
   "sidebar.triggers": "Déclencheurs",
   "sidebar.variables": "Variables globales",
   "sidebar.script": "Trill",
+  "sidebar.scriptrunner": "Exécuteur de script",
   "sidebar.packages": "Paquets",
   "sidebar.settings": "Paramètres",
   "sidebar.export": "Exporter",

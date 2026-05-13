@@ -6,6 +6,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TriggerForm } from "./components/TriggerForm";
 import { GlobalVarForm } from "./components/GlobalVarForm";
 import { ScriptLangView } from "./components/ScriptLangView";
+import { ScriptRunner } from "./components/ScriptRunner";
 import { SettingsView } from "./components/SettingsView";
 import { PackagesView, PackageDetailView } from "./components/PackagesView";
 import type { Trigger, GlobalVar, Package } from "./types";
@@ -41,6 +42,10 @@ function App() {
           <GlobalVarsView />
         ) : view === "scriptlang" ? (
           <ScriptLangView />
+        ) : view === "scriptrunner" ? (
+          <ScriptRunner />
+        ) : view === "settings" ? (
+          <SettingsView />
         ) : view === "packages" ? (
           <PackagesView onSelectPackage={(pkg) => {
             setSelectedPackage(pkg);
@@ -54,9 +59,7 @@ function App() {
               setSelectedPackage(null);
             }}
           />
-        ) : (
-          <SettingsView />
-        )}
+        ) : null}
       </main>
     </div>
   );

@@ -23,6 +23,9 @@ interface AppState {
   settings: AppSettings;
   loadSettings: () => Promise<void>;
   updateSettings: (s: Partial<AppSettings>) => Promise<void>;
+
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -66,4 +69,7 @@ export const useStore = create<AppState>((set, get) => ({
       });
     } catch {}
   },
+
+  sidebarCollapsed: false,
+  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 }));

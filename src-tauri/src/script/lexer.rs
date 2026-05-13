@@ -95,23 +95,67 @@ impl Lexer {
         let ch = self.advance();
 
         match ch {
-            '(' => Ok(Some(Token::new(TokenKind::LParen, "(".to_string(), self.line))),
-            ')' => Ok(Some(Token::new(TokenKind::RParen, ")".to_string(), self.line))),
-            '{' => Ok(Some(Token::new(TokenKind::LBrace, "{".to_string(), self.line))),
-            '}' => Ok(Some(Token::new(TokenKind::RBrace, "}".to_string(), self.line))),
-            '[' => Ok(Some(Token::new(TokenKind::LBracket, "[".to_string(), self.line))),
-            ']' => Ok(Some(Token::new(TokenKind::RBracket, "]".to_string(), self.line))),
-            ',' => Ok(Some(Token::new(TokenKind::Comma, ",".to_string(), self.line))),
+            '(' => Ok(Some(Token::new(
+                TokenKind::LParen,
+                "(".to_string(),
+                self.line,
+            ))),
+            ')' => Ok(Some(Token::new(
+                TokenKind::RParen,
+                ")".to_string(),
+                self.line,
+            ))),
+            '{' => Ok(Some(Token::new(
+                TokenKind::LBrace,
+                "{".to_string(),
+                self.line,
+            ))),
+            '}' => Ok(Some(Token::new(
+                TokenKind::RBrace,
+                "}".to_string(),
+                self.line,
+            ))),
+            '[' => Ok(Some(Token::new(
+                TokenKind::LBracket,
+                "[".to_string(),
+                self.line,
+            ))),
+            ']' => Ok(Some(Token::new(
+                TokenKind::RBracket,
+                "]".to_string(),
+                self.line,
+            ))),
+            ',' => Ok(Some(Token::new(
+                TokenKind::Comma,
+                ",".to_string(),
+                self.line,
+            ))),
             '.' => Ok(Some(Token::new(TokenKind::Dot, ".".to_string(), self.line))),
-            ';' => Ok(Some(Token::new(TokenKind::Semicolon, ";".to_string(), self.line))),
-            ':' => Ok(Some(Token::new(TokenKind::Colon, ":".to_string(), self.line))),
-            '+' => Ok(Some(Token::new(TokenKind::Plus, "+".to_string(), self.line))),
+            ';' => Ok(Some(Token::new(
+                TokenKind::Semicolon,
+                ";".to_string(),
+                self.line,
+            ))),
+            ':' => Ok(Some(Token::new(
+                TokenKind::Colon,
+                ":".to_string(),
+                self.line,
+            ))),
+            '+' => Ok(Some(Token::new(
+                TokenKind::Plus,
+                "+".to_string(),
+                self.line,
+            ))),
             '-' => Ok(Some(if self.match_next('>') {
                 Token::new(TokenKind::Arrow, "->".to_string(), self.line)
             } else {
                 Token::new(TokenKind::Minus, "-".to_string(), self.line)
             })),
-            '*' => Ok(Some(Token::new(TokenKind::Star, "*".to_string(), self.line))),
+            '*' => Ok(Some(Token::new(
+                TokenKind::Star,
+                "*".to_string(),
+                self.line,
+            ))),
             '/' => Ok(if self.match_next('/') {
                 self.skip_line_comment();
                 None
@@ -121,21 +165,17 @@ impl Lexer {
             } else {
                 Some(Token::new(TokenKind::Slash, "/".to_string(), self.line))
             }),
-            '%' => Ok(Some(Token::new(TokenKind::Percent, "%".to_string(), self.line))),
-            '|' => Ok(Some(if self.match_next('|') {
-                Token::new(TokenKind::Or, "||".to_string(), self.line)
-            } else {
-                Token::new(TokenKind::Pipe, "|".to_string(), self.line)
-            })),
-            '&' => if self.match_next('&') {
-                Ok(Some(Token::new(TokenKind::And, "&&".to_string(), self.line)))
-            } else {
-                Err(format!("Unexpected character '&' at line {}", self.line))
-            },
+            '%' => Ok(Some(Token::new(
+                TokenKind::Percent,
+                "%".to_string(),
+                self.line,
+            ))),
+            '|' => Ok(Some(Token::new(TokenKind::Pipe, "|".to_string(), self.line))),
+            '&' => Err(format!("Unexpected character '&' at line {}", self.line)),
             '!' => Ok(Some(if self.match_next('=') {
                 Token::new(TokenKind::Ne, "!=".to_string(), self.line)
             } else {
-                Token::new(TokenKind::Not, "!".to_string(), self.line)
+                return Err(format!("Unexpected character '!' at line {}. Did you mean 'not'?", self.line));
             })),
             '=' => Ok(Some(if self.match_next('=') {
                 Token::new(TokenKind::Eq, "==".to_string(), self.line)
@@ -154,7 +194,11 @@ impl Lexer {
             } else {
                 Token::new(TokenKind::Gt, ">".to_string(), self.line)
             })),
-            '\n' => Ok(Some(Token::new(TokenKind::Newline, "\n".to_string(), self.line))),
+            '\n' => Ok(Some(Token::new(
+                TokenKind::Newline,
+                "\n".to_string(),
+                self.line,
+            ))),
             '"' => Ok(Some(self.read_string()?)),
             '\'' => Ok(Some(self.read_char_literal()?)),
             c if c.is_ascii_digit() => Ok(Some(self.read_number(c))),

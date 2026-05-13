@@ -1,4 +1,7 @@
-use crate::script::{lexer::{Token, TokenKind}, ast::*};
+use crate::script::{
+    ast::*,
+    lexer::{Token, TokenKind},
+};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -65,7 +68,10 @@ impl Parser {
                     let pattern = self.parse_primary()?;
                     let pattern_val = match &pattern {
                         Expr::Literal(v) => v.clone(),
-                        _ => return Err("Pattern must be a literal value (number, string, true, false, or nil)".to_string()),
+                        _ => return Err(
+                            "Pattern must be a literal value (number, string, true, false, or nil)"
+                                .to_string(),
+                        ),
                     };
                     self.consume(&TokenKind::Arrow, "expected '=>' after match pattern")?;
                     let arm_expr = self.parse_pipe()?;
@@ -111,7 +117,7 @@ impl Parser {
                         value: Box::new(value),
                         body: Box::new(Expr::Var(name_clone)),
                     })
-                },
+                }
                 _ => Err("Invalid assignment target".to_string()),
             }
         } else {
@@ -330,7 +336,7 @@ impl Parser {
 
         if self.match_token(&TokenKind::LParen) {
             let saved = self.pos;
-            
+
             let mut params = vec![];
             let mut looks_like_params = true;
             if !self.check(&TokenKind::RParen) {
@@ -346,12 +352,15 @@ impl Parser {
                 }
             }
             if looks_like_params && self.check(&TokenKind::RParen) {
-                self.advance(); 
+                self.advance();
                 if self.match_token(&TokenKind::Arrow) {
                     let body = self.parse_pipe()?;
-                    return Ok(Expr::Fn { params, body: Box::new(body) });
+                    return Ok(Expr::Fn {
+                        params,
+                        body: Box::new(body),
+                    });
                 }
-                
+
                 if params.len() == 1 {
                     return Ok(Expr::Var(params.into_iter().next().unwrap()));
                 }
@@ -359,32 +368,30 @@ impl Parser {
                     return Err("Empty parentheses".to_string());
                 }
             }
-            
+
             self.pos = saved;
-            self.advance(); 
+            self.advance();
             let inner = self.parse_pipe()?;
             self.consume(&TokenKind::RParen, "expected ')' after expression")?;
             return Ok(inner);
         }
 
-        
         if self.check(&TokenKind::LBrace) {
-            
             let saved = self.pos;
-            self.advance(); 
+            self.advance();
             let is_object = if !self.check(&TokenKind::RBrace) && self.check(&TokenKind::Ident) {
                 let ident_pos = self.pos;
-                self.advance(); 
+                self.advance();
                 let has_colon = self.check(&TokenKind::Colon);
-                self.pos = ident_pos; 
+                self.pos = ident_pos;
                 has_colon
             } else {
                 false
             };
-            self.pos = saved; 
+            self.pos = saved;
 
             if is_object {
-                self.advance(); 
+                self.advance();
                 let mut fields = vec![];
                 if !self.check(&TokenKind::RBrace) {
                     loop {
@@ -402,11 +409,12 @@ impl Parser {
             }
         }
 
-        
         if self.check(&TokenKind::Ident) {
-            if self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1].kind == TokenKind::Arrow {
+            if self.pos + 1 < self.tokens.len()
+                && self.tokens[self.pos + 1].kind == TokenKind::Arrow
+            {
                 let name = self.advance().lexeme.clone();
-                self.advance(); 
+                self.advance();
                 let body = self.parse_pipe()?;
                 return Ok(Expr::Fn {
                     params: vec![name],
@@ -415,7 +423,6 @@ impl Parser {
             }
         }
 
-        
         if self.match_token(&TokenKind::Fn) {
             let mut params = vec![];
             if !self.check(&TokenKind::Arrow) {
@@ -479,7 +486,10 @@ impl Parser {
             Ok(self.advance())
         } else {
             let token = self.peek();
-            Err(format!("Line {}: expected {message}, got '{:?}'", token.line, token.kind))
+            Err(format!(
+                "Line {}: expected {message}, got '{:?}'",
+                token.line, token.kind
+            ))
         }
     }
 

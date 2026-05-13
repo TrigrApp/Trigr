@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Zap, Hash, BookOpen, Download, Upload, Settings, Package, ArrowUpFromLine } from "lucide-react";
+import { Zap, Hash, BookOpen, Download, Upload, Settings, Package, ArrowUpFromLine, Terminal, Loader, ChevronLeft, ChevronRight } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
@@ -14,13 +14,27 @@ export function Sidebar() {
   const globalVars = useStore((s) => s.globalVars);
   const lang = useStore((s) => s.settings.language);
   const loadData = useStore((s) => s.loadData);
+  const collapsed = useStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useStore((s) => s.toggleSidebar);
   const triggerCount = triggers.length;
   const globalVarCount = globalVars.length;
   const [update, setUpdate] = useState<Update | null>(null);
+  const [updateState, setUpdateState] = useState<"idle" | "downloading" | "error">("idle");
 
   useEffect(() => {
     check().then((u) => setUpdate(u)).catch(() => {});
   }, []);
+
+  async function handleUpdate() {
+    if (!update) return;
+    setUpdateState("downloading");
+    try {
+      await update.downloadAndInstall();
+    } catch {
+      setUpdateState("error");
+    }
+  }
+
   async function handleExport() {
     try {
       const filePath = await save({
@@ -52,73 +66,115 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
       <div className="sidebar-header">
         <div className="logo">
-          <LogoIcon size={28} />
-          <span className="logo-text">trigr</span>
+          <LogoIcon size={collapsed ? 24 : 28} />
+          {!collapsed && <span className="logo-text">trigr</span>}
         </div>
+        {!collapsed && (
+          <>
+            <div className="sidebar-header-spacer" />
+            <button
+              className="sidebar-collapse-btn"
+              onClick={toggleSidebar}
+              title="Collapse sidebar"
+            >
+              <ChevronLeft size={14} />
+            </button>
+          </>
+        )}
       </div>
       <nav className="sidebar-nav">
         <button
           className={`nav-item ${view === "triggers" ? "active" : ""}`}
           onClick={() => setView("triggers")}
+          title={collapsed ? t("sidebar.triggers", lang) : undefined}
         >
           <Zap size={16} />
-          <span className="nav-label">{t("sidebar.triggers", lang)}</span>
-          <span className="nav-badge">{triggerCount}</span>
+          {!collapsed && <span className="nav-label">{t("sidebar.triggers", lang)}</span>}
+          {!collapsed && <span className="nav-badge">{triggerCount}</span>}
         </button>
         <button
           className={`nav-item ${view === "globalvars" ? "active" : ""}`}
           onClick={() => setView("globalvars")}
+          title={collapsed ? t("sidebar.variables", lang) : undefined}
         >
           <Hash size={16} />
-          <span className="nav-label">{t("sidebar.variables", lang)}</span>
-          <span className="nav-badge">{globalVarCount}</span>
+          {!collapsed && <span className="nav-label">{t("sidebar.variables", lang)}</span>}
+          {!collapsed && <span className="nav-badge">{globalVarCount}</span>}
         </button>
         <button
           className={`nav-item ${view === "scriptlang" ? "active" : ""}`}
           onClick={() => setView("scriptlang")}
+          title={collapsed ? t("sidebar.script", lang) : undefined}
         >
           <BookOpen size={16} />
-          <span className="nav-label">{t("sidebar.script", lang)}</span>
+          {!collapsed && <span className="nav-label">{t("sidebar.script", lang)}</span>}
+        </button>
+        <button
+          className={`nav-item ${view === "scriptrunner" ? "active" : ""}`}
+          onClick={() => setView("scriptrunner")}
+          title={collapsed ? t("sidebar.scriptrunner", lang) : undefined}
+        >
+          <Terminal size={16} />
+          {!collapsed && <span className="nav-label">{t("sidebar.scriptrunner", lang)}</span>}
         </button>
         <button
           className={`nav-item ${view === "packages" ? "active" : ""}`}
           onClick={() => setView("packages")}
+          title={collapsed ? t("sidebar.packages", lang) : undefined}
         >
           <Package size={16} />
-          <span className="nav-label">{t("sidebar.packages", lang)}</span>
+          {!collapsed && <span className="nav-label">{t("sidebar.packages", lang)}</span>}
         </button>
         <button
           className={`nav-item ${view === "settings" ? "active" : ""}`}
           onClick={() => setView("settings")}
+          title={collapsed ? t("sidebar.settings", lang) : undefined}
         >
           <Settings size={16} />
-          <span className="nav-label">{t("sidebar.settings", lang)}</span>
+          {!collapsed && <span className="nav-label">{t("sidebar.settings", lang)}</span>}
         </button>
       </nav>
       <div className="sidebar-footer">
-        {update && (
+        {update && updateState !== "error" && (
           <div
             className="update-banner"
-            onClick={() => update.downloadAndInstall()}
-            title={`Update to ${update.version}`}
+            onClick={handleUpdate}
+            title={collapsed ? `Update to ${update.version}` : `Update to ${update.version}`}
           >
-            <ArrowUpFromLine size={14} />
-            <span>Update Available</span>
+            {updateState === "downloading" ? (
+              <Loader size={14} className="update-spinner" />
+            ) : (
+              <ArrowUpFromLine size={14} />
+            )}
+            {!collapsed && <span>{updateState === "downloading" ? "Downloading..." : "Update Available"}</span>}
           </div>
         )}
-        <button className="nav-item data-btn" onClick={handleExport}>
+        {updateState === "error" && (
+          <div className="update-banner update-banner-error" onClick={handleUpdate} title="Retry update">
+            <ArrowUpFromLine size={14} />
+            {!collapsed && <span>Update failed - try again</span>}
+          </div>
+        )}
+        <button className="nav-item data-btn" onClick={handleExport} title={collapsed ? t("sidebar.export", lang) : undefined}>
           <Download size={14} />
-          <span>{t("sidebar.export", lang)}</span>
+          {!collapsed && <span>{t("sidebar.export", lang)}</span>}
         </button>
-        <button className="nav-item data-btn" onClick={handleImport}>
-          <Upload size={14} />
-          <span>{t("sidebar.import", lang)}</span>
-        </button>
-      </div>
-    </aside>
+          <button className="nav-item data-btn" onClick={handleImport} title={collapsed ? t("sidebar.import", lang) : undefined}>
+            <Upload size={14} />
+            {!collapsed && <span>{t("sidebar.import", lang)}</span>}
+          </button>
+          <button
+            className="nav-item sidebar-expand-btn"
+            onClick={toggleSidebar}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          </button>
+        </div>
+      </aside>
   );
 }
 

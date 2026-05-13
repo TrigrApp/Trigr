@@ -233,12 +233,9 @@ fn evaluate_script(source: String, context: std::collections::HashMap<String, St
 }
 
 #[tauri::command]
-fn preview_script(source: String) -> String {
-    let mut context = std::collections::HashMap::new();
-    context.insert("name".to_string(), "World".to_string());
-    context.insert("greeting".to_string(), "Hello".to_string());
-    context.insert("count".to_string(), "42".to_string());
-    match script::evaluate(&source, &context) {
+fn preview_script(source: String, args: Vec<String>) -> String {
+    let context = std::collections::HashMap::new();
+    match script::evaluate_with_args(&source, &context, &args) {
         Ok(result) => result,
         Err(e) => format!("Error: {e}"),
     }

@@ -88,6 +88,10 @@ pub enum Value {
     Nil,
     List(Vec<Value>),
     Map(HashMap<String, Value>),
+    Fn {
+        params: Vec<String>,
+        body: Box<Expr>,
+    },
 }
 
 impl Value {
@@ -108,6 +112,7 @@ impl Value {
                 strs.join(", ")
             }
             Value::Map(_) => "[map]".to_string(),
+            Value::Fn { .. } => "[function]".to_string(),
         }
     }
 
@@ -125,6 +130,7 @@ impl Value {
             Value::Num(n) => *n != 0.0,
             Value::Str(s) => !s.is_empty(),
             Value::Nil => false,
+            Value::Fn { .. } => true,
             _ => true,
         }
     }

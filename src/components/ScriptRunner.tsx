@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Terminal, RotateCcw, BookOpen } from "lucide-react";
+import { Terminal, BookOpen, ChevronDown, ChevronRight, Clock, Copy, Check, Play, Plus, X, Trash2 } from "lucide-react";
 import { useStore } from "../store";
-import { CodeEditor, EditorOutput } from "./CodeEditor";
+import { CodeEditor } from "./CodeEditor";
 
 const QUICK_EXAMPLES = [
   { name: "Hello", code: 'upper("hello world")' },
   { name: "Date", code: 'today("%B %d, %Y")' },
-  { name: "Random", code: 'rand(1, 100)' },
+  { name: "Random", code: "rand(1, 100)" },
   { name: "If", code: 'let x = 15\nif x > 10 then "big" else "small"' },
-  { name: "Pipe", code: '[1, 2, 3, 4, 5]\n| filter(x => x > 2)\n| map(x => x * 10)\n| join_list(", ")' },
+  { name: "Pipe", code: "[1, 2, 3, 4, 5]\n| filter(x => x > 2)\n| map(x => x * 10)\n| join_list(\", \")" },
   { name: "Match", code: 'let n = 2\nmatch n {\n  1 => "one",\n  2 => "two",\n  _ => "many"\n}' },
   { name: "Object", code: 'let user = { name: "Alice", age: 30 }\nuser.name' },
   { name: "Args", code: 'if len(args) > 0 then args[0] else "no args"' },
@@ -37,7 +37,13 @@ export function ScriptRunner() {
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
+  const [scriptArgs, setScriptArgs] = useState<string[]>([""]);
   const [recent, setRecent] = useState<string[]>(loadRecent);
+  const [showRecent, setShowRecent] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const hasResult = !!result;
+  const hasError = !!error;
 
   async function run() {
     if (!code.trim()) return;
@@ -45,7 +51,8 @@ export function ScriptRunner() {
       setError("");
       setResult("");
       setRunning(true);
-      const res = await invoke<string>("preview_script", { source: code });
+      const filtered = scriptArgs.filter((a) => a.trim());
+      const res = await invoke<string>("preview_script", { source: code, args: filtered });
       setResult(res);
       const updated = [code, ...recent.filter((s) => s !== code)];
       setRecent(updated);
@@ -63,79 +70,158 @@ export function ScriptRunner() {
     setError("");
   }
 
-  function clearAll() {
-    setCode("");
-    setResult("");
-    setError("");
+  async function copyResult() {
+    try {
+      await navigator.clipboard.writeText(result);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  }
+
+  function addArg() {
+    setScriptArgs([...scriptArgs, ""]);
+  }
+
+  function updateArg(i: number, val: string) {
+    const next = [...scriptArgs];
+    next[i] = val;
+    setScriptArgs(next);
+  }
+
+  function removeArg(i: number) {
+    setScriptArgs(scriptArgs.filter((_, idx) => idx !== i));
+  }
+
+  function clearRecent() {
+    setRecent([]);
+    saveRecent([]);
   }
 
   return (
-    <div className="runner-layout">
-      <div className="runner-main">
-        <div className="view-header">
-          <h1>Trill Runner</h1>
-          <p className="view-subtitle">Write and test Trill scripts with live evaluation</p>
+    <div className="view-container runner-page">
+      <div className="view-header view-header-row">
+        <div className="view-header-text">
+          <h1>
+            <Terminal size={22} />
+            Script Runner
+          </h1>
+          <p className="view-subtitle">Test and experiment with Trill expressions in real time</p>
         </div>
+        <div className="view-header-actions">
+          <button className="btn-primary" onClick={run} disabled={running}>
+            <Play size={14} />
+            {running ? "Running..." : "Run"}
+            <kbd className="shortcut-hint">⌘↵</kbd>
+          </button>
+          <button className="btn-secondary" onClick={() => setView("scriptlang")}>
+            <BookOpen size={15} />
+            Docs
+          </button>
+        </div>
+      </div>
 
-        <div className="runner-toolbar">
-          <div className="runner-quick-examples">
-            {QUICK_EXAMPLES.map((ex) => (
-              <button key={ex.name} className="quick-example-btn" onClick={() => loadCode(ex.code)}>
-                {ex.name}
-              </button>
+      <div className="runner-quick-strip">
+        <div className="runner-quick-scroll">
+          {QUICK_EXAMPLES.map((ex) => (
+            <button key={ex.name} className="runner-quick-pill" onClick={() => loadCode(ex.code)}>
+              {ex.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="runner-args-section">
+        <div className="runner-args-header">
+          <span className="runner-args-label">Args ({scriptArgs.filter(a=>a.trim()).length})</span>
+          <button className="runner-args-add" onClick={addArg}>
+            <Plus size={12} />
+            Add
+          </button>
+        </div>
+        {scriptArgs.length > 0 && (
+          <div className="runner-args-list">
+            {scriptArgs.map((arg, i) => (
+              <div key={i} className="runner-arg-row">
+                <span className="runner-arg-index">{i}.</span>
+                <input
+                  className="runner-arg-input"
+                  value={arg}
+                  onChange={(e) => updateArg(i, e.target.value)}
+                  placeholder={`arg[${i}]`}
+                />
+                <button className="runner-arg-remove" onClick={() => removeArg(i)} title="Remove">
+                  <X size={11} />
+                </button>
+              </div>
             ))}
-          </div>
-          <div className="runner-actions">
-            <button className="runner-action-btn" onClick={clearAll} title="Clear">
-              <RotateCcw size={13} />
-            </button>
-            <button className="runner-action-btn" onClick={() => setView("scriptlang")} title="Open docs">
-              <BookOpen size={13} />
-            </button>
-          </div>
-        </div>
-
-        <CodeEditor
-          value={code}
-          onChange={(v) => { setCode(v); setResult(""); setError(""); }}
-          placeholder={"Write any Trill expression or script...\ne.g. upper(\"hello\")"}
-          onRun={run}
-          running={running}
-        />
-
-        <EditorOutput
-          result={result}
-          error={error}
-          onClear={() => { setResult(""); setError(""); }}
-        />
-
-        {result && (
-          <div className="runner-copy-hint">
-            <Terminal size={12} />
-            <span>Result: </span>
-            <code className="runner-result-value">{result}</code>
           </div>
         )}
       </div>
 
-      {recent.length > 0 && (
-        <aside className="runner-sidebar">
-          <div className="runner-sidebar-header">Recent</div>
-          <div className="runner-recent-list">
-            {recent.map((script, i) => (
-              <button
-                key={i}
-                className="runner-recent-item"
-                onClick={() => loadCode(script)}
-                title={script}
-              >
-                <code className="runner-recent-code">
-                  {script.length > 60 ? script.slice(0, 60) + "…" : script}
-                </code>
-              </button>
-            ))}
+      <CodeEditor
+        value={code}
+        onChange={(v) => { setCode(v); setResult(""); setError(""); }}
+        placeholder={"Write any Trill expression or script...\ne.g. upper(\"hello\")"}
+        onRun={run}
+      />
+
+      {(hasResult || hasError) && (
+        <div className={`runner-output ${hasError ? "is-error" : ""}`}>
+          <div className="runner-output-header">
+            <span className="runner-output-label">
+              {hasError ? <X size={12} /> : <Terminal size={12} />}
+              {hasError ? "Error" : "Output"}
+            </span>
+            <div className="runner-output-spacer" />
+            <button className="runner-output-clear" onClick={() => { setResult(""); setError(""); }} title="Clear">
+              <Trash2 size={11} />
+            </button>
           </div>
-        </aside>
+          <div className="runner-output-body">
+            <span className="runner-output-prompt">{hasError ? "✗" : "▸"}</span>
+            <pre className="runner-output-text">{hasError ? error : result}</pre>
+          </div>
+          {hasResult && !hasError && (
+            <div className="runner-output-actions">
+              <button className="runner-copy-btn" onClick={copyResult}>
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? "Copied" : "Copy result"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {recent.length > 0 && (
+        <div className="runner-recent-section">
+          <button className="runner-recent-toggle" onClick={() => setShowRecent(!showRecent)}>
+            {showRecent ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <Clock size={13} />
+            <span>Recent Scripts</span>
+            <span className="runner-recent-count">{recent.length}</span>
+            <div className="runner-recent-spacer" />
+            <button className="runner-recent-clear-all" onClick={(e) => { e.stopPropagation(); clearRecent(); }} title="Clear all">
+              <Trash2 size={11} />
+            </button>
+          </button>
+          {showRecent && (
+            <div className="runner-recent-grid">
+              {recent.map((script, i) => (
+                <button
+                  key={i}
+                  className="runner-recent-card"
+                  onClick={() => loadCode(script)}
+                  title={script}
+                >
+                  <code className="runner-recent-script">
+                    <Play size={10} className="runner-recent-play" />
+                    {script.length > 80 ? script.slice(0, 80) + "..." : script}
+                  </code>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

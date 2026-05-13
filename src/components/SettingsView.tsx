@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Keyboard, Palette, Check, Minus, Plus, ChevronDown } from "lucide-react";
+import { Keyboard, Palette, Check, Minus, Plus, ChevronDown, RefreshCw, Download, Loader } from "lucide-react";
 import { BlossomColorPicker } from "@dayflow/blossom-color-picker-react";
 import "../blossom-color-picker.css";
+import { check, Update } from "@tauri-apps/plugin-updater";
 import { applyThemeColors, hexToBlossom } from "../utils/color";
 import { t, languages } from "../i18n";
 import { useStore } from "../store";
@@ -18,6 +19,35 @@ export function SettingsView() {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const colorControlRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
+
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "uptodate" | "downloading" | "error">("idle");
+  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
+  const currentVersion = "0.1.2";
+
+  async function checkForUpdates() {
+    setUpdateStatus("checking");
+    try {
+      const u = await check();
+      if (u) {
+        setAvailableUpdate(u);
+        setUpdateStatus("available");
+      } else {
+        setUpdateStatus("uptodate");
+      }
+    } catch {
+      setUpdateStatus("error");
+    }
+  }
+
+  async function handleInstall() {
+    if (!availableUpdate) return;
+    setUpdateStatus("downloading");
+    try {
+      await availableUpdate.downloadAndInstall();
+    } catch {
+      setUpdateStatus("error");
+    }
+  }
 
   const saveSettings = useCallback(async (ender: string, color: string, size: number, language: string) => {
     await updateSettings({ ender_char: ender, theme_color: color, font_size: size, language });
@@ -211,6 +241,77 @@ export function SettingsView() {
             <div className="row-desc">{t("settings.language_desc", lang)}</div>
           </div>
           <LanguageSelect value={lang} onChange={handleLangChange} />
+        </div>
+      </div>
+
+      <div className="settings-card" style={{ marginTop: "1rem" }}>
+        <div className="settings-card-header settings-card-header-first">
+          <RefreshCw size={16} />
+          <span>{t("settings.updates", lang)}</span>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-label">
+            <div className="row-title">{t("settings.check_updates", lang)}</div>
+            <div className="row-desc">{t("settings.check_updates_desc", lang)}</div>
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            {updateStatus === "idle" && (
+              <button className="btn-secondary" onClick={checkForUpdates} style={{ flexShrink: 0 }}>
+                <RefreshCw size={14} />
+                {t("settings.check", lang)}
+              </button>
+            )}
+            {updateStatus === "checking" && (
+              <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                <Loader size={14} className="update-spinner" />
+                {t("settings.checking", lang)}
+              </span>
+            )}
+            {updateStatus === "uptodate" && (
+              <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem", color: "var(--success)", fontWeight: 500 }}>
+                <Check size={14} />
+                {t("settings.uptodate", lang)}
+              </span>
+            )}
+            {updateStatus === "available" && availableUpdate && (
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <span style={{ fontSize: "0.8125rem", color: "var(--accent)", fontWeight: 500 }}>
+                  v{availableUpdate.version}
+                </span>
+                <button
+                  className="btn-primary"
+                  onClick={handleInstall}
+                  style={{ flexShrink: 0, padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}
+                >
+                  <Download size={14} />
+                  {t("settings.install", lang)}
+                </button>
+              </div>
+            )}
+            {updateStatus === "downloading" && (
+              <span style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                <Loader size={14} className="update-spinner" />
+                {t("settings.downloading", lang)}
+              </span>
+            )}
+            {updateStatus === "error" && (
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <span style={{ fontSize: "0.8125rem", color: "var(--danger)", fontWeight: 500 }}>
+                  {t("settings.update_error", lang)}
+                </span>
+                <button className="btn-secondary" onClick={checkForUpdates} style={{ flexShrink: 0, padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}>
+                  <RefreshCw size={14} />
+                  {t("settings.check_again", lang)}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="settings-row settings-row-last">
+          <div className="settings-row-label">
+            <div className="row-title">Current Version</div>
+            <div className="row-desc">{currentVersion}</div>
+          </div>
         </div>
       </div>
     </div>
