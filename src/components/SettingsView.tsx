@@ -22,7 +22,7 @@ export function SettingsView() {
 
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "uptodate" | "downloading" | "error">("idle");
   const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
-  const currentVersion = "0.1.2";
+  const currentVersion = "0.1.3";
 
   async function checkForUpdates() {
     setUpdateStatus("checking");
